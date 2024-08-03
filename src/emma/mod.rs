@@ -51,6 +51,7 @@ impl Heap {
 		debug_assert!(bin > 0);
 		if bin < self.small_object_pages.len() {
 			{
+				let mut pp: *mut Option<NonNull<SmallObjectPage>> = &mut self.small_object_pages[bin];
 				let mut p = self.small_object_pages[bin];
 				loop {
 					if let Some(mut q) = p {
@@ -58,8 +59,14 @@ impl Heap {
 						debug_assert_eq!(page.object_size as usize, bin * 8);
 
 						if let Some(ret) = page.alloc() {
+							if p != self.small_object_pages[bin] {
+								*pp.as_mut().unwrap_unchecked() = page.next_page;
+								page.next_page = self.small_object_pages[bin];
+								self.small_object_pages[bin] = p;
+							}
 							return ret.as_ptr();
 						}
+						pp = &mut page.next_page;
 						p = page.next_page;
 					} else {
 						break;

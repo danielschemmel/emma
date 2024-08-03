@@ -96,6 +96,7 @@ impl SmallObjectPage {
 		self.objects_in_use -= 1;
 	}
 
+	#[inline]
 	pub fn dealloc(p: NonNull<u8>) {
 		let page = &mut unsafe { SmallObjectArena::arena(p).as_mut() }.pages[SmallObjectPage::page_id(p.as_ptr())];
 		page.dealloc_at(p)
