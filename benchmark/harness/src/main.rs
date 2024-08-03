@@ -29,12 +29,12 @@ fn main() {
 			.spawn(numbers::main)
 			.unwrap(),
 	);
-	// threads.push(
-	// 	std::thread::Builder::new()
-	// 		.name("arcs".to_owned())
-	// 		.spawn(arcs::main)
-	// 		.unwrap(),
-	// );
+	threads.push(
+		std::thread::Builder::new()
+			.name("arcs".to_owned())
+			.spawn(arcs::main)
+			.unwrap(),
+	);
 
 	for t in threads.into_iter() {
 		t.join().unwrap();

@@ -48,6 +48,7 @@ impl Heap {
 
 	unsafe fn alloc(&mut self, size: NonZero<usize>, alignment: NonZero<usize>) -> *mut u8 {
 		let bin = (size.get() + 7) / 8;
+		debug_assert!(bin > 0);
 		if bin < self.small_object_pages.len() {
 			{
 				let mut p = self.small_object_pages[bin];
@@ -110,6 +111,7 @@ impl Heap {
 
 	unsafe fn dealloc(&mut self, ptr: *mut u8, size: NonZero<usize>, _alignment: NonZero<usize>) {
 		let bin = (size.get() + 7) / 8;
+		debug_assert!(bin > 0);
 		if bin < self.small_object_pages.len() {
 			debug_assert!(!ptr.is_null());
 			SmallObjectPage::dealloc(NonNull::new_unchecked(ptr));
