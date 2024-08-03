@@ -8,7 +8,7 @@ static EMMA: DefaultEmma = DefaultEmma::new();
 
 #[test]
 fn threaded_arcs() {
-	const WORKERS: usize = 20;
+	const WORKERS: usize = 50;
 	let (senders, receivers): (Vec<_>, Vec<_>) = (0..WORKERS).map(|_id| std::sync::mpsc::channel::<Arc<usize>>()).unzip();
 	let senders = Arc::new(senders);
 

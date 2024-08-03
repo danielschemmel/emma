@@ -1,6 +1,13 @@
 [package]
 name = "emma"
 version = "0.0.0"
+authors = ["Daniel Schemmel <daniel@schemmel.net"]
+# repository = "https://github.com/danielschemmel/emma/"
+# license = ""
+description = "A full-fledged `no_std` capable memory allocator that does not rely on `libc`."
+keywords = ["alloc", "allocator", "malloc", "no_std"]
+readme = "README.md"
+
 edition = "2021"
 
 [profile.release]
