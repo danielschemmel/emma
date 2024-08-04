@@ -208,8 +208,7 @@ impl SmallObjectPage {
 				.as_ref();
 			loop {
 				let next = free_list.load(Ordering::Relaxed);
-				p.cast::<Option<NonNull<u8>>>()
-					.write(Some(NonNull::new_unchecked(next)));
+				p.cast::<Option<NonNull<u8>>>().write(NonNull::new(next));
 				if free_list
 					.compare_exchange(next, p.as_ptr(), Ordering::Release, Ordering::Relaxed)
 					.is_ok()
