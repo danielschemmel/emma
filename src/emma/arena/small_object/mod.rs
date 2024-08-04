@@ -76,15 +76,29 @@ impl SmallObjectPage {
 			self.objects_in_use += 1;
 			Some(p)
 		} else if self.bytes_in_reserve >= self.object_size {
-			let p = unsafe {
-				SmallObjectArena::arena(NonNull::new_unchecked(self as *mut SmallObjectPage as *mut u8))
+			unsafe {
+				let p = SmallObjectArena::arena(NonNull::new_unchecked(self).cast())
 					.cast::<u8>()
-					.byte_add(((self.page_number + 1) * PAGE_SIZE - self.bytes_in_reserve) as usize)
-			};
-			self.bytes_in_reserve -= self.object_size;
+					.byte_add(((self.page_number + 1) * PAGE_SIZE - self.bytes_in_reserve) as usize);
+				self.bytes_in_reserve -= self.object_size;
 
-			self.objects_in_use += 1;
-			Some(p)
+				if self.bytes_in_reserve % 4096 > self.object_size {
+					let mut q = p.byte_add(self.object_size as usize);
+					self.free_list = Some(q);
+					self.bytes_in_reserve -= self.object_size;
+
+					while self.bytes_in_reserve % 4096 >= self.object_size {
+						let next = q.byte_add(self.object_size as usize);
+						q.cast::<Option<NonNull<u8>>>().write(Some(next));
+						self.bytes_in_reserve -= self.object_size;
+						q = next;
+					}
+					q.cast::<Option<NonNull<u8>>>().write(None);
+				}
+
+				self.objects_in_use += 1;
+				Some(p)
+			}
 		} else {
 			None
 		}
