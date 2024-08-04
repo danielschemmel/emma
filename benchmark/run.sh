@@ -14,16 +14,25 @@ cd "$DIR"
 rm -f bin/emma-clean
 if git status --porcelain | grep '^ M src' ; then
 	git stash push ../src
+
 	pushd harness
 	cargo build --release --features=emma
 	popd
-	git stash pop
 
 	mv harness/target/release/harness bin/emma-clean
 	command time -v bin/emma-clean
+
+	pushd harness
+	cargo build --release --features=emma-tls
+	popd
+
+	mv harness/target/release/harness bin/emma-tls-clean
+	command time -v bin/emma-tls-clean
+
+	git stash pop
 fi
 
-for alloc in emma std jemalloc mimalloc ; do
+for alloc in emma emma-tls std jemalloc mimalloc ; do
 	pushd harness
 	cargo build --release --features=$alloc
 	popd

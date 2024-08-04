@@ -22,6 +22,7 @@ mimalloc = { version = "0.1.43", optional = true }
 
 [features]
 emma = ["dep:emma"]
+emma-tls = ["emma", "emma?/tls"]
 std = []
 jemalloc = ["dep:tikv-jemallocator"]
 mimalloc = ["dep:mimalloc"]

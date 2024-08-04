@@ -20,3 +20,7 @@ linux-raw-sys = { version = "0.6.4", default-features = false, features = ["no_s
 lock_api = "0.4.12"
 static_assertions = "1.1.0"
 syscalls = { version = "0.6.18", default-features = false }
+
+[features]
+default = []
+tls = []

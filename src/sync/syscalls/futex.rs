@@ -198,10 +198,8 @@ pub unsafe fn futex_unlock_pi(uaddr: &AtomicU32, flags: FutexFlags) -> Result<()
 
 /// Equivalent to `syscall(SYS_futex, uaddr, FUTEX_TRYLOCK_PI, 0, NULL, NULL, 0)`
 #[inline]
-pub unsafe fn futex_trylock_pi(uaddr: &AtomicU32, flags: FutexFlags) -> Result<(), syscalls::Errno> {
-	futex_val2::<{ linux_raw_sys::general::FUTEX_TRYLOCK_PI }>(uaddr, flags, 0, 0, ptr::null(), 0).map(|ret| {
-		debug_assert_eq!(ret, 0);
-	})
+pub unsafe fn futex_trylock_pi(uaddr: &AtomicU32, flags: FutexFlags) -> Result<bool, syscalls::Errno> {
+	futex_val2::<{ linux_raw_sys::general::FUTEX_TRYLOCK_PI }>(uaddr, flags, 0, 0, ptr::null(), 0).map(|ret| ret == 0)
 }
 
 /// Equivalent to `syscall(SYS_futex, uaddr, FUTEX_WAIT_BITSET, val, timeout/val2, NULL, val3)`

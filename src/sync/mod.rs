@@ -1,7 +1,7 @@
 #![allow(unused_imports)]
 #![allow(dead_code)]
 
-mod syscalls;
+pub mod syscalls;
 
 mod futex;
 pub use futex::{Futex, FutexGuard};
