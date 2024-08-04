@@ -74,8 +74,6 @@ pub struct SmallObjectPage {
 	free_list: Option<NonNull<u8>>,
 	#[cfg(feature = "tls")]
 	foreign_free_list: AtomicPtr<u8>,
-	/// number of objects currently in use
-	objects_in_use: u32,
 	bytes_in_reserve: u32,
 }
 
@@ -137,18 +135,12 @@ impl SmallObjectPage {
 		if let Some(p) = self.free_list {
 			self.free_list = unsafe { p.cast::<Option<NonNull<u8>>>().read() };
 
-			self.objects_in_use += 1;
 			Some(p)
 		} else {
 			#[cfg(feature = "tls")]
 			{
 				if let Some(p) = NonNull::new(self.foreign_free_list.swap(ptr::null_mut(), Ordering::Acquire)) {
-					let mut next = unsafe { p.cast::<Option<NonNull<u8>>>().read() };
-					self.free_list = next;
-					while let Some(q) = next {
-						self.objects_in_use -= 1;
-						next = unsafe { q.cast::<Option<NonNull<u8>>>().read() }
-					}
+					self.free_list = unsafe { p.cast::<Option<NonNull<u8>>>().read() };
 
 					return Some(p);
 				}
@@ -175,7 +167,6 @@ impl SmallObjectPage {
 						q.cast::<Option<NonNull<u8>>>().write(None);
 					}
 
-					self.objects_in_use += 1;
 					Some(p)
 				}
 			} else {
@@ -190,7 +181,6 @@ impl SmallObjectPage {
 		let page = &mut unsafe { SmallObjectArena::arena(p).as_mut() }.pages[SmallObjectPage::page_id(p.as_ptr())];
 		p.cast::<Option<NonNull<u8>>>().write(page.free_list);
 		page.free_list = Some(p);
-		page.objects_in_use -= 1;
 	}
 
 	#[cfg(feature = "tls")]
@@ -211,7 +201,6 @@ impl SmallObjectPage {
 			let page = page.as_mut();
 			p.cast::<Option<NonNull<u8>>>().write(page.free_list);
 			page.free_list = Some(p);
-			page.objects_in_use -= 1;
 		} else {
 			let free_list = page
 				.byte_add(offset_of!(SmallObjectPage, foreign_free_list))
