@@ -11,6 +11,18 @@ done
 DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
 cd "$DIR"
 
+rm -f bin/emma-clean
+if git status --porcelain | grep '^ M src' ; then
+	git stash push ../src
+	pushd harness
+	cargo build --release --features=emma
+	popd
+	git stash pop
+
+	mv harness/target/release/harness bin/emma-clean
+	command time -v bin/emma-clean
+fi
+
 for alloc in emma std jemalloc mimalloc ; do
 	pushd harness
 	cargo build --release --features=$alloc
@@ -20,4 +32,4 @@ for alloc in emma std jemalloc mimalloc ; do
 	command time -v bin/$alloc
 done
 
-hyperfine --warmup 3 --shell=none bin/{emma,std,jemalloc,mimalloc}
+hyperfine --warmup 3 --shell=none "$@" bin/*
