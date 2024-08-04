@@ -7,7 +7,11 @@
 This means that multiple `emma` instances can be used in the same process without ever noticing one another.
 
 # Performance
-At the moment, `emma` is not very performant.
+For "small" objects (<= 2040 bytes) and with enabled TLS (see §Features), `emma`'s performance is close to state of the art allocators.
+
+For "medium" to "large" objects, `emma` is not very performant (they are treated like "huge" objects at the moment).
+
+For "huge" objects, `emma` is able to just dispatch the call directly to the OS.
 
 # Target Architecture
 At the moment, `emma` exclusively targets linux on `x86_64`.
@@ -20,4 +24,4 @@ At the moment, `emma` exclusively targets linux on `x86_64`.
 - `emma` is not async-signal-safe, i.e., you may not de-/allocate memory in a signal handler. (The same probably holds true for your default memory allocator; POSIX does not list `malloc` or `free` as async-signal safe either.)
 
 # Features
-- `tls` enabling thread-local-storage requires a nightly compiler.
+- `tls` enabling thread-local-storage requires a nightly compiler. If at all possible, you should enable TLS, as it massively impacts performance.

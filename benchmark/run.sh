@@ -11,7 +11,7 @@ done
 DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
 cd "$DIR"
 
-rm -f bin/emma-clean
+rm -f bin/{emma-clean,emma-tls-clean}
 if git status --porcelain | grep '^ M src' ; then
 	git stash push ../src
 
