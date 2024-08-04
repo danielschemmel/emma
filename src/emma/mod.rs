@@ -27,7 +27,8 @@ impl Emma {
 	///
 	/// # Safety
 	/// Only safe if all objects have been deallocated!
-	pub unsafe fn reset(&self) {
+	#[allow(dead_code)]
+	unsafe fn reset(&self) {
 		self.heap.lock().reset()
 	}
 }
