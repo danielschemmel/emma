@@ -1,5 +1,5 @@
 use core::alloc::Layout;
-use core::num::{NonZero};
+use core::num::NonZero;
 use core::ptr::{self, NonNull};
 #[cfg(feature = "tls")]
 use core::sync::atomic::AtomicU64;
@@ -37,6 +37,39 @@ impl Emma {
 			#[cfg(feature = "tls")]
 			heap_manager: heap_manager::HeapManager::new(),
 		}
+	}
+
+	/// Print internals of the [`Emma`] type. This is probably not interesting for consumers of this library.
+	pub const fn print_internals() -> impl core::fmt::Debug {
+		struct F;
+
+		impl core::fmt::Debug for F {
+			fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+				writeln!(f, "{} v{}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"))?;
+
+				#[cfg(not(feature = "tls"))]
+				const TLS_ENABLED: &str = "disabled";
+				#[cfg(feature = "tls")]
+				const TLS_ENABLED: &str = "enabled";
+				writeln!(f, "tls {}", TLS_ENABLED)?;
+
+				#[cfg(not(feature = "boundary-checks"))]
+				const BOUNDARY_CHECKS_ENABLED: &str = "disabled";
+				#[cfg(feature = "boundary-checks")]
+				const BOUNDARY_CHECKS_ENABLED: &str = "enabled";
+				writeln!(f, "boundary checks {}", BOUNDARY_CHECKS_ENABLED)?;
+
+				#[cfg(not(debug_assertions))]
+				const DEBUG_ASSERTIONS_ENABLED: &str = "disabled";
+				#[cfg(debug_assertions)]
+				const DEBUG_ASSERTIONS_ENABLED: &str = "enabled";
+				writeln!(f, "debug assertions {}", DEBUG_ASSERTIONS_ENABLED)?;
+
+				Ok(())
+			}
+		}
+
+		F
 	}
 }
 
@@ -142,7 +175,7 @@ const fn powerlaw_bin_from_size(size: usize) -> u32 {
 	debug_assert!(size >= 0b100);
 
 	let lz = size.leading_zeros();
-	(usize::BITS - lz - 3) * 4 + (((size + (1 << usize::BITS - lz -3) - 1) >> (usize::BITS - lz - 3)) as u32 - 4)
+	(usize::BITS - lz - 3) * 4 + (((size + (1 << usize::BITS - lz - 3) - 1) >> (usize::BITS - lz - 3)) as u32 - 4)
 }
 
 const_assert_eq!(powerlaw_bin_from_size(0b100), 0);
@@ -172,11 +205,7 @@ const fn powerlaw_bins_round_up_size(size: NonZero<usize>) -> NonZero<usize> {
 	let lz = size.leading_zeros();
 	let lowest_relevant_bit = 1usize << (usize::BITS - 3 - lz);
 	let mask = 1usize << (usize::BITS - 1 - lz) | 1usize << (usize::BITS - 2 - lz) | lowest_relevant_bit;
-	unsafe {
-		NonZero::new_unchecked(
-			(size.get() + (lowest_relevant_bit - 1)) & mask
-		)
-	}
+	unsafe { NonZero::new_unchecked((size.get() + (lowest_relevant_bit - 1)) & mask) }
 }
 
 /// ONLY FOR USE IN `const_assert` AND FRIENDS! DO NOT USE AT RUNTIME!
@@ -192,11 +221,26 @@ const fn const_non_zero_usize(x: usize) -> NonZero<usize> {
 const_assert_eq!(powerlaw_bins_round_up_size(const_non_zero_usize(0b1000)).get(), 0b1000);
 const_assert_eq!(powerlaw_bins_round_up_size(const_non_zero_usize(0b1001)).get(), 0b1010);
 const_assert_eq!(powerlaw_bins_round_up_size(const_non_zero_usize(0b1010)).get(), 0b1010);
-const_assert_eq!(powerlaw_bins_round_up_size(const_non_zero_usize(0b10010)).get(), 0b10100);
-const_assert_eq!(powerlaw_bins_round_up_size(const_non_zero_usize(0b110100)).get(), 0b111000);
-const_assert_eq!(powerlaw_bins_round_up_size(const_non_zero_usize(0b1011000)).get(), 0b1100000);
-const_assert_eq!(powerlaw_bins_round_up_size(const_non_zero_usize(usize::MAX / 2 + 1)).get(), usize::MAX / 2 + 1);
-const_assert_eq!(powerlaw_bins_round_up_size(const_non_zero_usize(usize::MAX / 2 + 2)).get(), 0b101usize << (usize::BITS - 3));
+const_assert_eq!(
+	powerlaw_bins_round_up_size(const_non_zero_usize(0b10010)).get(),
+	0b10100
+);
+const_assert_eq!(
+	powerlaw_bins_round_up_size(const_non_zero_usize(0b110100)).get(),
+	0b111000
+);
+const_assert_eq!(
+	powerlaw_bins_round_up_size(const_non_zero_usize(0b1011000)).get(),
+	0b1100000
+);
+const_assert_eq!(
+	powerlaw_bins_round_up_size(const_non_zero_usize(usize::MAX / 2 + 1)).get(),
+	usize::MAX / 2 + 1
+);
+const_assert_eq!(
+	powerlaw_bins_round_up_size(const_non_zero_usize(usize::MAX / 2 + 2)).get(),
+	0b101usize << (usize::BITS - 3)
+);
 
 impl Heap {
 	unsafe fn alloc(&mut self, size: NonZero<usize>, alignment: NonZero<usize>) -> *mut u8 {
@@ -222,7 +266,13 @@ impl Heap {
 					panic!("{}|{}", powerlaw_bins_round_up_size(size).get() as u32, size.get());
 				}
 				if bin != powerlaw_bin_from_size(powerlaw_bins_round_up_size(size).get() as u32 as usize) {
-					panic!("{}({}) {}|{}", powerlaw_bins_round_up_size(size).get() as u32, size.get(), powerlaw_bin_from_size(powerlaw_bins_round_up_size(size).get() as u32 as usize), bin);
+					panic!(
+						"{}({}) {}|{}",
+						powerlaw_bins_round_up_size(size).get() as u32,
+						size.get(),
+						powerlaw_bin_from_size(powerlaw_bins_round_up_size(size).get() as u32 as usize),
+						bin
+					);
 				}
 				medium_object::alloc(
 					&mut self.medium_object_pages
@@ -238,8 +288,11 @@ impl Heap {
 						+ large_object::MAXIMUM_OBJECT_ALIGNMENT / 2
 						+ large_object::MAXIMUM_OBJECT_ALIGNMENT / 4) as usize,
 				) {
-				debug_assert!( powerlaw_bins_round_up_size(size).get() as u32 as usize >= size.get());
-				debug_assert_eq!(bin, powerlaw_bin_from_size(powerlaw_bins_round_up_size(size).get() as u32 as usize));
+				debug_assert!(powerlaw_bins_round_up_size(size).get() as u32 as usize >= size.get());
+				debug_assert_eq!(
+					bin,
+					powerlaw_bin_from_size(powerlaw_bins_round_up_size(size).get() as u32 as usize)
+				);
 				large_object::alloc(
 					&mut self.large_object_pages
 						[(bin - powerlaw_bin_from_size((medium_object::MAXIMUM_OBJECT_ALIGNMENT * 2) as usize)) as usize],
@@ -321,7 +374,10 @@ unsafe impl alloc::alloc::GlobalAlloc for Emma {
 				NonZero::new(layout.size()).unwrap(),
 				NonZero::new(layout.align()).unwrap(),
 			);
-			debug_assert!(ret.is_null() || ret as usize > 4096, "We should return a proper null-pointer");
+			debug_assert!(
+				ret.is_null() || ret as usize > 4096,
+				"We should return a proper null-pointer"
+			);
 			ret
 		} else {
 			ptr::null_mut()
@@ -331,8 +387,15 @@ unsafe impl alloc::alloc::GlobalAlloc for Emma {
 	unsafe fn realloc(&self, ptr: *mut u8, layout: core::alloc::Layout, new_size: usize) -> *mut u8 {
 		#[cfg(any(feature = "boundary-checks", debug_assertions))]
 		{
-			assert_ne!(ptr, core::ptr::null_mut(), "Null pointers may not be passed to dealloc.");
-			assert!(ptr as usize > 4096, "This looks like someone (slightly) indexed a null pointer and then tried to dealloc it.");
+			assert_ne!(
+				ptr,
+				core::ptr::null_mut(),
+				"Null pointers may not be passed to dealloc."
+			);
+			assert!(
+				ptr as usize > 4096,
+				"This looks like someone (slightly) indexed a null pointer and then tried to dealloc it."
+			);
 			assert!(layout.align().is_power_of_two());
 			assert!(layout.size() > 0);
 			assert!(new_size > 0);
@@ -411,8 +474,15 @@ unsafe impl alloc::alloc::GlobalAlloc for Emma {
 	unsafe fn dealloc(&self, ptr: *mut u8, layout: core::alloc::Layout) {
 		#[cfg(any(feature = "boundary-checks", debug_assertions))]
 		{
-			assert_ne!(ptr, core::ptr::null_mut(), "Null pointers may not be passed to dealloc.");
-			assert!(ptr as usize > 4096, "This looks like someone (slightly) indexed a null pointer and then tried to dealloc it.");
+			assert_ne!(
+				ptr,
+				core::ptr::null_mut(),
+				"Null pointers may not be passed to dealloc."
+			);
+			assert!(
+				ptr as usize > 4096,
+				"This looks like someone (slightly) indexed a null pointer and then tried to dealloc it."
+			);
 			assert!(layout.align().is_power_of_two());
 			assert!(layout.size() > 0);
 		}
@@ -431,7 +501,8 @@ unsafe impl alloc::alloc::GlobalAlloc for Emma {
 		{
 			Heap::dealloc(
 				// If we do not currently hold a heap, we can just use the NULL id that no allocated page should use.
-				// This will end up using the foreign deallocation scheme - but as this thread does not have a heap, it could not have allocated the object in the first place...
+				// This will end up using the foreign deallocation scheme - but as this thread does not have a heap, it could
+				// not have allocated the object in the first place...
 				THREAD_HEAP.map(|h| h.as_ref().id).unwrap_or(0),
 				ptr,
 				NonZero::new(layout.size()).unwrap(),

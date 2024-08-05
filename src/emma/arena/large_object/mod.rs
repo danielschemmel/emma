@@ -157,11 +157,7 @@ impl Page {
 }
 
 #[inline]
-pub unsafe fn alloc(
-	bin: &mut Option<NonNull<Page>>,
-	object_size: u32,
-	#[cfg(feature = "tls")] id: HeapId,
-) -> *mut u8 {
+pub unsafe fn alloc(bin: &mut Option<NonNull<Page>>, object_size: u32, #[cfg(feature = "tls")] id: HeapId) -> *mut u8 {
 	{
 		let mut pp: *mut Option<NonNull<Page>> = bin;
 		let mut p = *bin;

@@ -15,10 +15,8 @@ const ARENA_SIZE: u32 = 4 * 1024 * 1024;
 const PAGE_SIZE: u32 = 32 * 1024;
 const PAGES_PER_ARENA: u32 = ARENA_SIZE / PAGE_SIZE;
 pub const MAXIMUM_OBJECT_ALIGNMENT: u32 = 256;
-#[cfg(not(feature = "tls"))]
-const METADATA_ZONE_SIZE: u32 = 12 * MAXIMUM_OBJECT_ALIGNMENT;
-#[cfg(feature = "tls")]
-const METADATA_ZONE_SIZE: u32 = 13 * MAXIMUM_OBJECT_ALIGNMENT;
+const METADATA_ZONE_SIZE: u32 =
+	(size_of::<Arena>() as u32 + MAXIMUM_OBJECT_ALIGNMENT - 1) & !(MAXIMUM_OBJECT_ALIGNMENT - 1);
 
 #[derive(Debug)]
 struct Arena {
