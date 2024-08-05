@@ -309,7 +309,13 @@ impl Heap {
 		}
 	}
 
-	unsafe fn dealloc(id: HeapId, ptr: *mut u8, size: NonZero<usize>, _alignment: NonZero<usize>) {
+	unsafe fn dealloc(
+		#[cfg(not(feature = "tls"))] &mut self,
+		#[cfg(feature = "tls")] id: HeapId,
+		ptr: *mut u8,
+		size: NonZero<usize>,
+		_alignment: NonZero<usize>,
+	) {
 		let bin = (size.get() + 7) / 8;
 		debug_assert!(bin > 0);
 		if bin <= NUM_SMALL_OBJECT_BINS {
