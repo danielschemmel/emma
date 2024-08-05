@@ -1,8 +1,8 @@
-use core::mem::{offset_of, MaybeUninit};
+use core::mem::offset_of;
 use core::num::NonZero;
 use core::ptr::{self, NonNull};
 
-use static_assertions::{const_assert, const_assert_eq};
+use static_assertions::const_assert;
 #[cfg(feature = "tls")]
 use {
 	crate::emma::{AtomicHeapId, HeapId},
@@ -12,29 +12,18 @@ use {
 use crate::mmap::mmap_aligned;
 
 const ARENA_SIZE: u32 = 4 * 1024 * 1024;
-const PAGE_SIZE: u32 = 64 * 1024;
-const PAGES_PER_ARENA: u32 = ARENA_SIZE / PAGE_SIZE;
-pub const MAXIMUM_OBJECT_ALIGNMENT: u32 = 4096;
-#[cfg(not(feature = "tls"))]
-const METADATA_ZONE_SIZE: u32 = 1 * MAXIMUM_OBJECT_ALIGNMENT;
-#[cfg(feature = "tls")]
-const METADATA_ZONE_SIZE: u32 = 1 * MAXIMUM_OBJECT_ALIGNMENT;
+pub const MAXIMUM_OBJECT_ALIGNMENT: u32 = 512 * 1024;
 
 #[derive(Debug)]
 struct Arena {
 	#[cfg(feature = "tls")]
 	owner: AtomicHeapId,
-	pages: [Page; PAGES_PER_ARENA as usize],
+	page: Page,
 }
 
 const_assert!(ARENA_SIZE.is_power_of_two());
-const_assert!(PAGE_SIZE.is_power_of_two());
 const_assert!(MAXIMUM_OBJECT_ALIGNMENT.is_power_of_two());
-const_assert_eq!(ARENA_SIZE % PAGE_SIZE, 0);
-const_assert_eq!(PAGE_SIZE % MAXIMUM_OBJECT_ALIGNMENT, 0);
-const_assert_eq!(METADATA_ZONE_SIZE % MAXIMUM_OBJECT_ALIGNMENT, 0);
-const_assert!(size_of::<Arena>() > (METADATA_ZONE_SIZE - MAXIMUM_OBJECT_ALIGNMENT) as usize);
-const_assert!(size_of::<Arena>() <= METADATA_ZONE_SIZE as usize);
+const_assert!(size_of::<Arena>() < ARENA_SIZE as usize);
 
 impl Arena {
 	#[inline]
@@ -51,7 +40,6 @@ impl Arena {
 #[derive(Debug)]
 pub struct Page {
 	pub next_page: Option<NonNull<Page>>,
-	page_number: u32,
 	free_list: Option<NonZero<u32>>,
 	#[cfg(feature = "tls")]
 	foreign_free_list: AtomicU32,
@@ -60,56 +48,26 @@ pub struct Page {
 
 impl Page {
 	#[inline]
-	pub unsafe fn from_new_arena(
-		#[cfg(feature = "tls")] owner: HeapId,
-	) -> Option<(NonNull<Page>, NonNull<Page>, NonNull<Page>)> {
+	pub unsafe fn from_new_arena(#[cfg(feature = "tls")] owner: HeapId) -> Option<NonNull<Page>> {
 		let region = mmap_aligned(
 			NonZero::new(ARENA_SIZE as usize).unwrap(),
 			NonZero::new(ARENA_SIZE as usize).unwrap(),
 			3,
 		)?;
 
-		let pages_p = region.byte_add(offset_of!(Arena, pages)).cast::<Page>();
-		let mut pages: [MaybeUninit<Page>; PAGES_PER_ARENA as usize] = MaybeUninit::uninit().assume_init();
-		pages[0].write(Page {
-			next_page: None,
-			page_number: 0,
-			free_list: None,
-			#[cfg(feature = "tls")]
-			foreign_free_list: AtomicU32::new(0),
-			bytes_in_reserve: PAGE_SIZE - METADATA_ZONE_SIZE,
-		});
-		for i in 1..pages.len() - 1 {
-			pages[i].write(Page {
-				next_page: Some(pages_p.add(i + 1)),
-				page_number: i as u32,
-				free_list: None,
-				#[cfg(feature = "tls")]
-				foreign_free_list: AtomicU32::new(0),
-				bytes_in_reserve: PAGE_SIZE,
-			});
-		}
-		pages[pages.len() - 1].write(Page {
-			next_page: None,
-			page_number: (pages.len() - 1) as u32,
-			free_list: None,
-			#[cfg(feature = "tls")]
-			foreign_free_list: AtomicU32::new(0),
-			bytes_in_reserve: PAGE_SIZE,
-		});
-
 		region.cast().write(Arena {
 			#[cfg(feature = "tls")]
 			owner: AtomicHeapId::new(owner),
-			pages: core::mem::transmute(pages),
+			page: Page {
+				next_page: None,
+				free_list: None,
+				#[cfg(feature = "tls")]
+				foreign_free_list: AtomicU32::new(0),
+				bytes_in_reserve: ARENA_SIZE - size_of::<Arena>() as u32,
+			},
 		});
 
-		Some((pages_p, pages_p.add(1), pages_p.add(PAGES_PER_ARENA as usize - 1)))
-	}
-
-	#[inline]
-	unsafe fn page_id(p: *mut u8) -> usize {
-		((p as usize) & (ARENA_SIZE as usize - 1)) / (PAGE_SIZE as usize)
+		Some(region.byte_add(offset_of!(Arena, page)).cast())
 	}
 
 	#[inline]
@@ -139,27 +97,12 @@ impl Page {
 			}
 
 			if self.bytes_in_reserve >= object_size {
+				self.bytes_in_reserve -= self.bytes_in_reserve % object_size;
 				unsafe {
 					let p = Arena::arena(NonNull::new_unchecked(self).cast())
 						.cast::<u8>()
-						.byte_add(((self.page_number + 1) * PAGE_SIZE - self.bytes_in_reserve) as usize);
+						.byte_add((ARENA_SIZE - self.bytes_in_reserve) as usize);
 					self.bytes_in_reserve -= object_size;
-
-					if self.bytes_in_reserve % 4096 >= object_size {
-						let mut q = p.byte_add(object_size as usize);
-						let mut offset = Arena::object_offset(q);
-						self.free_list = Some(offset);
-						self.bytes_in_reserve -= object_size;
-
-						while self.bytes_in_reserve % 4096 >= object_size {
-							let next = q.byte_add(object_size as usize);
-							offset = offset.checked_add(object_size).unwrap_unchecked();
-							q.cast::<Option<NonZero<u32>>>().write(Some(offset));
-							self.bytes_in_reserve -= object_size;
-							q = next;
-						}
-						q.cast::<Option<NonZero<u32>>>().write(None);
-					}
 
 					return Some(p);
 				}
@@ -181,10 +124,7 @@ impl Page {
 	#[inline]
 	pub unsafe fn dealloc(heap_id: HeapId, p: NonNull<u8>) {
 		let arena = Arena::arena(p);
-		let mut page = arena
-			.byte_add(offset_of!(Arena, pages))
-			.cast::<Page>()
-			.add(Page::page_id(p.as_ptr()));
+		let mut page = arena.byte_add(offset_of!(Arena, page)).cast::<Page>();
 
 		let p_offset = Arena::object_offset(p);
 
@@ -262,11 +202,7 @@ pub unsafe fn alloc(
 	let pages_from_new_arena = Page::from_new_arena();
 	#[cfg(feature = "tls")]
 	let pages_from_new_arena = Page::from_new_arena(id);
-	if let Some((mut page, first_additional_page, mut last_additional_page)) = pages_from_new_arena {
-		debug_assert_eq!(last_additional_page.as_ref().next_page, None);
-		last_additional_page.as_mut().next_page = *reserve_pages;
-		*reserve_pages = Some(first_additional_page);
-
+	if let Some(mut page) = pages_from_new_arena {
 		page.as_mut().next_page = *bin;
 		*bin = Some(page);
 

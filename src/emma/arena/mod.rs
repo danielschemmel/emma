@@ -1,4 +1,3 @@
-mod medium_object;
-mod small_object;
-
-pub use small_object::SmallObjectPage;
+pub mod large_object;
+pub mod medium_object;
+pub mod small_object;
