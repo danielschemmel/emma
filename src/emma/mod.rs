@@ -279,8 +279,11 @@ impl Heap {
 
 unsafe impl alloc::alloc::GlobalAlloc for Emma {
 	unsafe fn alloc(&self, layout: core::alloc::Layout) -> *mut u8 {
-		assert!(layout.align().is_power_of_two());
-		assert_eq!(layout.size() & (layout.align() - 1), 0);
+		#[cfg(any(feature = "boundary-checks", debug_assertions))]
+		{
+			debug_assert!(layout.align().is_power_of_two());
+			debug_assert_eq!(layout.size() & (layout.align() - 1), 0);
+		}
 
 		#[cfg(not(feature = "tls"))]
 		{
@@ -301,9 +304,12 @@ unsafe impl alloc::alloc::GlobalAlloc for Emma {
 	}
 
 	unsafe fn dealloc(&self, ptr: *mut u8, layout: core::alloc::Layout) {
-		assert_ne!(ptr, core::ptr::null_mut());
-		assert!(layout.align().is_power_of_two());
-		assert_eq!(layout.size() & (layout.align() - 1), 0);
+		#[cfg(any(feature = "boundary-checks", debug_assertions))]
+		{
+			assert_ne!(ptr, core::ptr::null_mut());
+			assert!(layout.align().is_power_of_two());
+			assert_eq!(layout.size() & (layout.align() - 1), 0);
+		}
 
 		#[cfg(not(feature = "tls"))]
 		{
