@@ -12,13 +12,13 @@ use {
 use crate::mmap::mmap_aligned;
 
 const ARENA_SIZE: u32 = 4 * 1024 * 1024;
-const PAGE_SIZE: u32 = 128 * 1024;
+const PAGE_SIZE: u32 = 32 * 1024;
 const PAGES_PER_ARENA: u32 = ARENA_SIZE / PAGE_SIZE;
 const MAXIMUM_OBJECT_ALIGNMENT: u32 = 1024;
 #[cfg(not(feature = "tls"))]
-const METADATA_ZONE_SIZE: u32 = MAXIMUM_OBJECT_ALIGNMENT;
+const METADATA_ZONE_SIZE: u32 = 3 * MAXIMUM_OBJECT_ALIGNMENT;
 #[cfg(feature = "tls")]
-const METADATA_ZONE_SIZE: u32 = MAXIMUM_OBJECT_ALIGNMENT;
+const METADATA_ZONE_SIZE: u32 = 4 * MAXIMUM_OBJECT_ALIGNMENT;
 
 #[derive(Debug)]
 pub struct SmallObjectArena {
@@ -167,11 +167,11 @@ impl SmallObjectPage {
 						q.cast::<Option<NonZero<u32>>>().write(None);
 					}
 
-					Some(p)
+					return Some(p);
 				}
-			} else {
-				None
 			}
+
+			None
 		}
 	}
 
