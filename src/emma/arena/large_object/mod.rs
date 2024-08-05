@@ -115,7 +115,7 @@ impl Page {
 	#[cfg(not(feature = "tls"))]
 	#[inline]
 	pub unsafe fn dealloc(p: NonNull<u8>) {
-		let page = &mut unsafe { Arena::arena(p).as_mut() }.pages[Page::page_id(p.as_ptr())];
+		let page = &mut unsafe { Arena::arena(p).as_mut() }.page;
 		p.cast::<Option<NonZero<u32>>>().write(page.free_list);
 		page.free_list = Some(Arena::object_offset(p));
 	}
@@ -159,7 +159,6 @@ impl Page {
 #[inline]
 pub unsafe fn alloc(
 	bin: &mut Option<NonNull<Page>>,
-	reserve_pages: &mut Option<NonNull<Page>>,
 	object_size: u32,
 	#[cfg(feature = "tls")] id: HeapId,
 ) -> *mut u8 {
@@ -186,23 +185,11 @@ pub unsafe fn alloc(
 		}
 	}
 
-	if let Some(mut p) = *reserve_pages {
-		let page = p.as_mut();
-
-		*reserve_pages = page.next_page;
-		page.next_page = *bin;
-		*bin = Some(p);
-
-		let ret = page.alloc(object_size);
-		debug_assert!(ret.is_some());
-		return unsafe { ret.unwrap_unchecked() }.as_ptr();
-	}
-
 	#[cfg(not(feature = "tls"))]
-	let pages_from_new_arena = Page::from_new_arena();
+	let page_from_new_arena = Page::from_new_arena();
 	#[cfg(feature = "tls")]
-	let pages_from_new_arena = Page::from_new_arena(id);
-	if let Some(mut page) = pages_from_new_arena {
+	let page_from_new_arena = Page::from_new_arena(id);
+	if let Some(mut page) = page_from_new_arena {
 		page.as_mut().next_page = *bin;
 		*bin = Some(page);
 

@@ -63,7 +63,12 @@ impl HeapManager {
 						return Some(thread_heap.byte_add(offset_of!(ThreadHeap, heap)).cast::<Heap>());
 					}
 				}
-				Err(_) => panic!(),
+				Err(Errno::ENOMEM) => panic!("ENOMEM"),
+				Err(Errno::EDEADLK) => panic!("EDEADLK"),
+				Err(Errno::EINVAL) => panic!("EINVAL"),
+				Err(Errno::ENOSYS) => panic!("ENOSYS"),
+				Err(Errno::EPERM) => panic!("EPERM"),
+				Err(err) => panic!("{}", err),
 			}
 
 			p = thread_heap

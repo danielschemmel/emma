@@ -51,10 +51,14 @@ impl Arena {
 #[derive(Debug)]
 pub struct Page {
 	pub next_page: Option<NonNull<Page>>,
+	/// the index into `arena.pages` that yields this page
 	page_number: u32,
+	/// the free_list is an arena-relative byte offset
 	free_list: Option<NonZero<u32>>,
+	/// the free_list is an arena-relative byte offset
 	#[cfg(feature = "tls")]
 	foreign_free_list: AtomicU32,
+	/// the amount of bytes that have not yet been added allocated or added to a `free_list`
 	bytes_in_reserve: u32,
 }
 
@@ -146,16 +150,16 @@ impl Page {
 					self.bytes_in_reserve -= object_size;
 
 					if self.bytes_in_reserve % 4096 >= object_size {
+						self.bytes_in_reserve -= object_size;
 						let mut q = p.byte_add(object_size as usize);
 						let mut offset = Arena::object_offset(q);
 						self.free_list = Some(offset);
-						self.bytes_in_reserve -= object_size;
 
 						while self.bytes_in_reserve % 4096 >= object_size {
+							self.bytes_in_reserve -= object_size;
 							let next = q.byte_add(object_size as usize);
 							offset = offset.checked_add(object_size).unwrap_unchecked();
 							q.cast::<Option<NonZero<u32>>>().write(Some(offset));
-							self.bytes_in_reserve -= object_size;
 							q = next;
 						}
 						q.cast::<Option<NonZero<u32>>>().write(None);

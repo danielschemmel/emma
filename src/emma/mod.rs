@@ -1,4 +1,5 @@
-use core::num::NonZero;
+use core::alloc::Layout;
+use core::num::{NonZero};
 use core::ptr::{self, NonNull};
 #[cfg(feature = "tls")]
 use core::sync::atomic::AtomicU64;
@@ -50,17 +51,13 @@ impl Emma {
 			if let Some(thread_heap) = THREAD_HEAP {
 				Some(thread_heap)
 			} else if let Some(thread_heap) = self.heap_manager.acquire_thread_heap() {
+				debug_assert_ne!(thread_heap.as_ref().id, 0);
 				THREAD_HEAP = Some(thread_heap);
 				Some(thread_heap)
 			} else {
 				None
 			}
 		}
-	}
-
-	unsafe fn thread_heap_unchecked() -> NonNull<Heap> {
-		debug_assert_ne!(THREAD_HEAP, None);
-		THREAD_HEAP.unwrap_unchecked()
 	}
 }
 
@@ -97,7 +94,6 @@ struct Heap {
 	small_object_pages: [Option<NonNull<small_object::Page>>; NUM_SMALL_OBJECT_BINS],
 	medium_object_reserve: Option<NonNull<medium_object::Page>>,
 	medium_object_pages: [Option<NonNull<medium_object::Page>>; NUM_MEDIUM_OBJECT_BINS],
-	large_object_reserve: Option<NonNull<large_object::Page>>,
 	large_object_pages: [Option<NonNull<large_object::Page>>; NUM_LARGE_OBJECT_BINS],
 }
 
@@ -117,7 +113,6 @@ impl Heap {
 			small_object_pages: [None; NUM_SMALL_OBJECT_BINS],
 			medium_object_reserve: None,
 			medium_object_pages: [None; NUM_MEDIUM_OBJECT_BINS],
-			large_object_reserve: None,
 			large_object_pages: [None; NUM_LARGE_OBJECT_BINS],
 		}
 	}
@@ -128,7 +123,8 @@ impl Heap {
 	fn new() -> Self {
 		use core::sync::atomic::AtomicU64;
 
-		static HEAP_IDS: AtomicU64 = AtomicU64::new(0);
+		// We use `0` as the id if we do not hold a heap, so we may not use it as a normal heap id.
+		static HEAP_IDS: AtomicU64 = AtomicU64::new(1);
 
 		Self {
 			id: HEAP_IDS.fetch_add(1, core::sync::atomic::Ordering::Relaxed),
@@ -136,7 +132,6 @@ impl Heap {
 			small_object_pages: [None; NUM_SMALL_OBJECT_BINS],
 			medium_object_reserve: None,
 			medium_object_pages: [None; NUM_MEDIUM_OBJECT_BINS],
-			large_object_reserve: None,
 			large_object_pages: [None; NUM_LARGE_OBJECT_BINS],
 		}
 	}
@@ -147,42 +142,61 @@ const fn powerlaw_bin_from_size(size: usize) -> u32 {
 	debug_assert!(size >= 0b100);
 
 	let lz = size.leading_zeros();
-	(usize::BITS - lz - 3) * 4 + ((size >> (usize::BITS - lz - 3)) as u32 - 4)
+	(usize::BITS - lz - 3) * 4 + (((size + (1 << usize::BITS - lz -3) - 1) >> (usize::BITS - lz - 3)) as u32 - 4)
 }
 
 const_assert_eq!(powerlaw_bin_from_size(0b100), 0);
 const_assert_eq!(powerlaw_bin_from_size(0b101), 1);
 const_assert_eq!(powerlaw_bin_from_size(0b110), 2);
 const_assert_eq!(powerlaw_bin_from_size(0b111), 3);
-const_assert_eq!(powerlaw_bin_from_size(0b1001), 4);
+const_assert_eq!(powerlaw_bin_from_size(0b1000), 4);
+const_assert_eq!(powerlaw_bin_from_size(0b1001), 5);
+const_assert_eq!(powerlaw_bin_from_size(0b1010), 5);
 const_assert_eq!(powerlaw_bin_from_size(0b100000), 12);
 const_assert_eq!(powerlaw_bin_from_size(0b101000), 13);
 const_assert_eq!(powerlaw_bin_from_size(0b110000), 14);
 const_assert_eq!(powerlaw_bin_from_size(0b111000), 15);
-const_assert_eq!(powerlaw_bin_from_size(0b1001000), 16);
-const_assert_eq!(powerlaw_bin_from_size(0b1011000), 17);
-const_assert_eq!(powerlaw_bin_from_size(0b1101000), 18);
-const_assert_eq!(powerlaw_bin_from_size(0b1111000), 19);
-const_assert_eq!(powerlaw_bin_from_size(0b10010000), 20);
+const_assert_eq!(powerlaw_bin_from_size(0b1000000), 16);
+const_assert_eq!(powerlaw_bin_from_size(0b1001000), 17);
+const_assert_eq!(powerlaw_bin_from_size(0b1010000), 17);
+const_assert_eq!(powerlaw_bin_from_size(0b1011000), 18);
+const_assert_eq!(powerlaw_bin_from_size(0b1100000), 18);
+const_assert_eq!(powerlaw_bin_from_size(0b1101000), 19);
+const_assert_eq!(powerlaw_bin_from_size(0b1111000), 20);
+const_assert_eq!(powerlaw_bin_from_size(0b10010000), 21);
 
 #[inline]
 const fn powerlaw_bins_round_up_size(size: NonZero<usize>) -> NonZero<usize> {
 	debug_assert!(size.get() >= 8);
 
 	let lz = size.leading_zeros();
+	let lowest_relevant_bit = 1usize << (usize::BITS - 3 - lz);
+	let mask = 1usize << (usize::BITS - 1 - lz) | 1usize << (usize::BITS - 2 - lz) | lowest_relevant_bit;
 	unsafe {
 		NonZero::new_unchecked(
-			size.get()
-				& (1usize << (usize::BITS - 1 - lz) | 1usize << (usize::BITS - 2 - lz) | 1usize << (usize::BITS - 3 - lz)),
+			(size.get() + (lowest_relevant_bit - 1)) & mask
 		)
 	}
 }
 
-// const_assert_eq!(powerlaw_bins_round_up_size(0b1001), 0b1000);
-// const_assert_eq!(powerlaw_bins_round_up_size(0b10010), 0b10000);
-// const_assert_eq!(powerlaw_bins_round_up_size(0b110100), 0b110000);
-// const_assert_eq!(powerlaw_bins_round_up_size(0b1011000), 0b1010000);
-// const_assert_eq!(powerlaw_bins_round_up_size(usize::MAX / 2 + 1), usize::MAX / 2 + 1);
+/// ONLY FOR USE IN `const_assert` AND FRIENDS! DO NOT USE AT RUNTIME!
+#[allow(dead_code)]
+#[allow(unconditional_panic)]
+const fn const_non_zero_usize(x: usize) -> NonZero<usize> {
+	match NonZero::new(x) {
+		Some(val) => val,
+		None => [][0],
+	}
+}
+
+const_assert_eq!(powerlaw_bins_round_up_size(const_non_zero_usize(0b1000)).get(), 0b1000);
+const_assert_eq!(powerlaw_bins_round_up_size(const_non_zero_usize(0b1001)).get(), 0b1010);
+const_assert_eq!(powerlaw_bins_round_up_size(const_non_zero_usize(0b1010)).get(), 0b1010);
+const_assert_eq!(powerlaw_bins_round_up_size(const_non_zero_usize(0b10010)).get(), 0b10100);
+const_assert_eq!(powerlaw_bins_round_up_size(const_non_zero_usize(0b110100)).get(), 0b111000);
+const_assert_eq!(powerlaw_bins_round_up_size(const_non_zero_usize(0b1011000)).get(), 0b1100000);
+const_assert_eq!(powerlaw_bins_round_up_size(const_non_zero_usize(usize::MAX / 2 + 1)).get(), usize::MAX / 2 + 1);
+const_assert_eq!(powerlaw_bins_round_up_size(const_non_zero_usize(usize::MAX / 2 + 2)).get(), 0b101usize << (usize::BITS - 3));
 
 impl Heap {
 	unsafe fn alloc(&mut self, size: NonZero<usize>, alignment: NonZero<usize>) -> *mut u8 {
@@ -204,6 +218,12 @@ impl Heap {
 						+ medium_object::MAXIMUM_OBJECT_ALIGNMENT / 2
 						+ medium_object::MAXIMUM_OBJECT_ALIGNMENT / 4) as usize,
 				) {
+				if (powerlaw_bins_round_up_size(size).get() as u32 as usize) < size.get() {
+					panic!("{}|{}", powerlaw_bins_round_up_size(size).get() as u32, size.get());
+				}
+				if bin != powerlaw_bin_from_size(powerlaw_bins_round_up_size(size).get() as u32 as usize) {
+					panic!("{}({}) {}|{}", powerlaw_bins_round_up_size(size).get() as u32, size.get(), powerlaw_bin_from_size(powerlaw_bins_round_up_size(size).get() as u32 as usize), bin);
+				}
 				medium_object::alloc(
 					&mut self.medium_object_pages
 						[(bin - powerlaw_bin_from_size((small_object::MAXIMUM_OBJECT_ALIGNMENT * 2) as usize)) as usize],
@@ -218,10 +238,11 @@ impl Heap {
 						+ large_object::MAXIMUM_OBJECT_ALIGNMENT / 2
 						+ large_object::MAXIMUM_OBJECT_ALIGNMENT / 4) as usize,
 				) {
+				debug_assert!( powerlaw_bins_round_up_size(size).get() as u32 as usize >= size.get());
+				debug_assert_eq!(bin, powerlaw_bin_from_size(powerlaw_bins_round_up_size(size).get() as u32 as usize));
 				large_object::alloc(
 					&mut self.large_object_pages
 						[(bin - powerlaw_bin_from_size((medium_object::MAXIMUM_OBJECT_ALIGNMENT * 2) as usize)) as usize],
-					&mut self.large_object_reserve,
 					powerlaw_bins_round_up_size(size).get() as u32,
 					#[cfg(feature = "tls")]
 					self.id,
@@ -235,14 +256,14 @@ impl Heap {
 		}
 	}
 
-	unsafe fn dealloc(&mut self, ptr: *mut u8, size: NonZero<usize>, _alignment: NonZero<usize>) {
+	unsafe fn dealloc(id: HeapId, ptr: *mut u8, size: NonZero<usize>, _alignment: NonZero<usize>) {
 		let bin = (size.get() + 7) / 8;
 		debug_assert!(bin > 0);
-		if bin <= self.small_object_pages.len() {
+		if bin <= NUM_SMALL_OBJECT_BINS {
 			debug_assert!(!ptr.is_null());
 			small_object::Page::dealloc(
 				#[cfg(feature = "tls")]
-				self.id,
+				id,
 				NonNull::new_unchecked(ptr),
 			);
 		} else {
@@ -255,7 +276,7 @@ impl Heap {
 				) {
 				medium_object::Page::dealloc(
 					#[cfg(feature = "tls")]
-					self.id,
+					id,
 					NonNull::new_unchecked(ptr),
 				);
 			} else if bin
@@ -266,7 +287,7 @@ impl Heap {
 				) {
 				large_object::Page::dealloc(
 					#[cfg(feature = "tls")]
-					self.id,
+					id,
 					NonNull::new_unchecked(ptr),
 				);
 			} else {
@@ -281,9 +302,11 @@ unsafe impl alloc::alloc::GlobalAlloc for Emma {
 	unsafe fn alloc(&self, layout: core::alloc::Layout) -> *mut u8 {
 		#[cfg(any(feature = "boundary-checks", debug_assertions))]
 		{
+			debug_assert!(layout.size() > 0);
 			debug_assert!(layout.align().is_power_of_two());
-			debug_assert_eq!(layout.size() & (layout.align() - 1), 0);
 		}
+
+		let layout = layout.pad_to_align();
 
 		#[cfg(not(feature = "tls"))]
 		{
@@ -294,22 +317,107 @@ unsafe impl alloc::alloc::GlobalAlloc for Emma {
 		}
 		#[cfg(feature = "tls")]
 		if let Some(mut thread_heap) = self.thread_heap() {
-			thread_heap.as_mut().alloc(
+			let ret = thread_heap.as_mut().alloc(
 				NonZero::new(layout.size()).unwrap(),
 				NonZero::new(layout.align()).unwrap(),
-			)
+			);
+			debug_assert!(ret.is_null() || ret as usize > 4096, "We should return a proper null-pointer");
+			ret
 		} else {
 			ptr::null_mut()
 		}
 	}
 
+	unsafe fn realloc(&self, ptr: *mut u8, layout: core::alloc::Layout, new_size: usize) -> *mut u8 {
+		#[cfg(any(feature = "boundary-checks", debug_assertions))]
+		{
+			assert_ne!(ptr, core::ptr::null_mut(), "Null pointers may not be passed to dealloc.");
+			assert!(ptr as usize > 4096, "This looks like someone (slightly) indexed a null pointer and then tried to dealloc it.");
+			assert!(layout.align().is_power_of_two());
+			assert!(layout.size() > 0);
+			assert!(new_size > 0);
+			assert!(Layout::from_size_align(new_size, layout.align()).is_ok());
+		}
+
+		let layout = layout.pad_to_align();
+		let new_layout = Layout::from_size_align_unchecked(new_size, layout.align()).pad_to_align();
+
+		if layout.size() / 8 < NUM_SMALL_OBJECT_BINS {
+			if layout.size() / 8 == new_layout.size() / 8 {
+				return ptr;
+			}
+		} else {
+			let old_bin = powerlaw_bin_from_size(layout.size());
+			if old_bin
+				<= powerlaw_bin_from_size(
+					(large_object::MAXIMUM_OBJECT_ALIGNMENT
+						+ large_object::MAXIMUM_OBJECT_ALIGNMENT / 2
+						+ large_object::MAXIMUM_OBJECT_ALIGNMENT / 4) as usize,
+				) {
+				let new_bin = powerlaw_bin_from_size(new_layout.size());
+				if old_bin == new_bin {
+					return ptr;
+				}
+			} else if new_layout.size()
+				> (large_object::MAXIMUM_OBJECT_ALIGNMENT
+					+ large_object::MAXIMUM_OBJECT_ALIGNMENT / 2
+					+ large_object::MAXIMUM_OBJECT_ALIGNMENT / 4) as usize
+			{
+				debug_assert!(
+					powerlaw_bin_from_size(new_layout.size())
+						> powerlaw_bin_from_size(
+							(large_object::MAXIMUM_OBJECT_ALIGNMENT
+								+ large_object::MAXIMUM_OBJECT_ALIGNMENT / 2
+								+ large_object::MAXIMUM_OBJECT_ALIGNMENT / 4) as usize,
+						)
+				);
+
+				let old_size = (layout.size() + 4095) & !4095;
+				let new_size = (new_layout.size() + 4095) & !4095;
+				if old_size == new_size {
+					return ptr;
+				} else if old_size > new_size {
+					crate::mmap::mremap_resize(
+						NonNull::new_unchecked(ptr).cast(),
+						NonZero::new_unchecked(old_size),
+						NonZero::new_unchecked(new_size),
+					)
+					.unwrap();
+					return ptr;
+				} else {
+					if crate::mmap::mremap_resize(
+						NonNull::new_unchecked(ptr).cast(),
+						NonZero::new_unchecked(old_size),
+						NonZero::new_unchecked(new_size),
+					)
+					.is_ok()
+					{
+						return ptr;
+					}
+				}
+			}
+		}
+
+		let new_ptr = unsafe { self.alloc(new_layout) };
+		if !new_ptr.is_null() {
+			unsafe {
+				ptr::copy_nonoverlapping(ptr, new_ptr, core::cmp::min(layout.size(), new_size));
+				self.dealloc(ptr, layout);
+			}
+		}
+		new_ptr
+	}
+
 	unsafe fn dealloc(&self, ptr: *mut u8, layout: core::alloc::Layout) {
 		#[cfg(any(feature = "boundary-checks", debug_assertions))]
 		{
-			assert_ne!(ptr, core::ptr::null_mut());
+			assert_ne!(ptr, core::ptr::null_mut(), "Null pointers may not be passed to dealloc.");
+			assert!(ptr as usize > 4096, "This looks like someone (slightly) indexed a null pointer and then tried to dealloc it.");
 			assert!(layout.align().is_power_of_two());
-			assert_eq!(layout.size() & (layout.align() - 1), 0);
+			assert!(layout.size() > 0);
 		}
+
+		let layout = layout.pad_to_align();
 
 		#[cfg(not(feature = "tls"))]
 		{
@@ -321,7 +429,10 @@ unsafe impl alloc::alloc::GlobalAlloc for Emma {
 		}
 		#[cfg(feature = "tls")]
 		{
-			Self::thread_heap_unchecked().as_mut().dealloc(
+			Heap::dealloc(
+				// If we do not currently hold a heap, we can just use the NULL id that no allocated page should use.
+				// This will end up using the foreign deallocation scheme - but as this thread does not have a heap, it could not have allocated the object in the first place...
+				THREAD_HEAP.map(|h| h.as_ref().id).unwrap_or(0),
 				ptr,
 				NonZero::new(layout.size()).unwrap(),
 				NonZero::new(layout.align()).unwrap(),
