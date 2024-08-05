@@ -118,6 +118,7 @@ impl SmallObjectPage {
 		((p as usize) & (ARENA_SIZE as usize - 1)) / (PAGE_SIZE as usize)
 	}
 
+	#[inline]
 	pub fn alloc(&mut self, object_size: u32) -> Option<NonNull<u8>> {
 		if let Some(offset) = self.free_list {
 			unsafe {

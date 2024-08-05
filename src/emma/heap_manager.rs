@@ -4,9 +4,11 @@ use core::ptr::{self, NonNull};
 use core::sync::atomic::{AtomicPtr, AtomicU32, Ordering};
 
 use static_assertions::const_assert_eq;
+use syscalls::Errno;
 
 use super::Heap;
 use crate::mmap::mmap_aligned;
+use crate::sync::syscalls::FUTEX_OWNER_DIED;
 
 #[derive(Debug, Default)]
 pub(crate) struct HeapManager {
@@ -24,7 +26,7 @@ impl ThreadHeap {
 	fn new(next: *mut ThreadHeap) -> Self {
 		Self {
 			next: AtomicPtr::new(next),
-			thread_lock: AtomicU32::new(0),
+			thread_lock: AtomicU32::new(crate::sys::gettid() as u32),
 			heap: Heap::new(),
 		}
 	}
@@ -38,25 +40,38 @@ impl HeapManager {
 	}
 
 	pub unsafe fn acquire_thread_heap(&self) -> Option<NonNull<Heap>> {
-		// let mut p = self.heaps.load(Ordering::Relaxed);
-		// while let Some(thread_heap) = NonNull::new(p) {
-		// 	let thread_lock = thread_heap
-		// 		.byte_add(offset_of!(ThreadHeap, thread_lock))
-		// 		.cast::<AtomicU32>();
+		let mut p = self.heaps.load(Ordering::Relaxed);
+		while let Some(thread_heap) = NonNull::new(p) {
+			let thread_lock = thread_heap
+				.byte_add(offset_of!(ThreadHeap, thread_lock))
+				.cast::<AtomicU32>();
 
-		// 	match crate::sync::syscalls::futex_trylock_pi(thread_lock.as_ref(), crate::sync::syscalls::FutexFlags::empty())
-		// { 		Ok(true) => return Some(thread_heap.byte_add(offset_of!(ThreadHeap, heap)).cast::<Heap>()),
-		// 		Ok(false) | Err(syscalls::Errno::EAGAIN) => (),
-		// 		// FIXME: panics can not be processed in the memory allocator....
-		// 		Err(_err) => return None,
-		// 	}
+			// a robust futex sadly requires a global resource: https://www.man7.org/linux/man-pages/man2/set_robust_list.2.html
+			let tid = thread_lock.as_ref().load(Ordering::Relaxed);
+			match crate::sync::syscalls::futex_trylock_pi(thread_lock.as_ref(), crate::sync::syscalls::FutexFlags::PRIVATE) {
+				Ok(true) => {
+					thread_lock.as_ref().fetch_nand(FUTEX_OWNER_DIED, Ordering::Release);
+					return Some(thread_heap.byte_add(offset_of!(ThreadHeap, heap)).cast::<Heap>());
+				}
+				Ok(false) | Err(Errno::EAGAIN) => (),
+				Err(Errno::ESRCH) => {
+					if thread_lock
+						.as_ref()
+						.compare_exchange(tid, crate::sys::gettid() as u32, Ordering::Acquire, Ordering::Relaxed)
+						.is_ok()
+					{
+						return Some(thread_heap.byte_add(offset_of!(ThreadHeap, heap)).cast::<Heap>());
+					}
+				}
+				Err(_) => panic!(),
+			}
 
-		// 	p = thread_heap
-		// 		.byte_add(offset_of!(ThreadHeap, next))
-		// 		.cast::<AtomicPtr<ThreadHeap>>()
-		// 		.as_ref()
-		// 		.load(Ordering::Relaxed);
-		// }
+			p = thread_heap
+				.byte_add(offset_of!(ThreadHeap, next))
+				.cast::<AtomicPtr<ThreadHeap>>()
+				.as_ref()
+				.load(Ordering::Relaxed);
+		}
 
 		const_assert_eq!(size_of::<ThreadHeap>() % align_of::<ThreadHeap>(), 0);
 		let size = (size_of::<ThreadHeap>() + 4095) & !4095;
@@ -69,12 +84,6 @@ impl HeapManager {
 
 		let mut start = self.heaps.load(Ordering::Acquire);
 		thread_heap.write(ThreadHeap::new(start));
-		let locked = crate::sync::syscalls::futex_trylock_pi(
-			&thread_heap.as_ref().thread_lock,
-			crate::sync::syscalls::FutexFlags::empty(),
-		);
-		debug_assert_eq!(locked, Ok(true));
-		debug_assert_ne!(thread_heap.as_ref().thread_lock.load(Ordering::Acquire), 0);
 
 		while self
 			.heaps

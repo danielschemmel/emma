@@ -3,6 +3,17 @@
 
 mod syscalls;
 
+#[cfg(not(feature = "tls"))]
+mod tls {
+	use core::ffi::c_int;
+
+	pub type Tid = c_int;
+
+	pub fn gettid() -> c_int {
+		super::syscalls::gettid()
+	}
+}
+
 #[cfg(feature = "tls")]
 mod tls {
 	use core::ffi::c_int;
@@ -23,5 +34,5 @@ mod tls {
 	}
 }
 
-#[cfg(feature = "tls")]
+pub use syscalls::kill;
 pub use tls::*;
