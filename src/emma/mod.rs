@@ -112,9 +112,8 @@ impl Heap {
 				loop {
 					if let Some(mut q) = p {
 						let page = q.as_mut();
-						debug_assert_eq!(page.object_size as usize, bin * 8);
 
-						if let Some(ret) = page.alloc() {
+						if let Some(ret) = page.alloc((bin * 8) as u32) {
 							if p != self.small_object_pages[bin] {
 								*pp.as_mut().unwrap_unchecked() = page.next_page;
 								page.next_page = self.small_object_pages[bin];
@@ -137,8 +136,7 @@ impl Heap {
 				page.next_page = self.small_object_pages[bin];
 				self.small_object_pages[bin] = Some(p);
 
-				page.object_size = (bin * 8) as u32;
-				let ret = page.alloc();
+				let ret = page.alloc((bin * 8) as u32);
 				debug_assert!(ret.is_some());
 				return unsafe { ret.unwrap_unchecked() }.as_ptr();
 			}
@@ -152,11 +150,10 @@ impl Heap {
 				last_additional_page.as_mut().next_page = self.small_object_pages[0];
 				self.small_object_pages[0] = Some(first_additional_page);
 
-				page.as_mut().object_size = (bin * 8) as u32;
 				page.as_mut().next_page = self.small_object_pages[bin];
 				self.small_object_pages[bin] = Some(page);
 
-				let ret = page.as_mut().alloc();
+				let ret = page.as_mut().alloc((bin * 8) as u32);
 				debug_assert!(ret.is_some());
 				return unsafe { ret.unwrap_unchecked() }.as_ptr();
 			} else {

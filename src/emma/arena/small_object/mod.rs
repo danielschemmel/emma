@@ -6,8 +6,7 @@ use static_assertions::{const_assert, const_assert_eq};
 #[cfg(feature = "tls")]
 use {
 	crate::emma::{AtomicHeapId, HeapId},
-	core::ptr,
-	core::sync::atomic::{AtomicPtr, Ordering},
+	core::sync::atomic::{AtomicU32, Ordering},
 };
 
 use crate::mmap::mmap_aligned;
@@ -19,7 +18,7 @@ const MAXIMUM_OBJECT_ALIGNMENT: u32 = 1024;
 #[cfg(not(feature = "tls"))]
 const METADATA_ZONE_SIZE: u32 = MAXIMUM_OBJECT_ALIGNMENT;
 #[cfg(feature = "tls")]
-const METADATA_ZONE_SIZE: u32 = MAXIMUM_OBJECT_ALIGNMENT * 2;
+const METADATA_ZONE_SIZE: u32 = MAXIMUM_OBJECT_ALIGNMENT;
 
 #[derive(Debug)]
 pub struct SmallObjectArena {
@@ -42,16 +41,20 @@ impl SmallObjectArena {
 	unsafe fn arena(p: NonNull<u8>) -> NonNull<SmallObjectArena> {
 		NonNull::new_unchecked(((p.as_ptr() as usize) & !(ARENA_SIZE as usize - 1)) as *mut SmallObjectArena)
 	}
+
+	#[inline]
+	unsafe fn object_offset(p: NonNull<u8>) -> NonZero<u32> {
+		NonZero::new_unchecked((p.as_ptr() as u32) % ARENA_SIZE)
+	}
 }
 
 #[derive(Debug)]
 pub struct SmallObjectPage {
 	pub next_page: Option<NonNull<SmallObjectPage>>,
 	page_number: u32,
-	pub object_size: u32,
-	free_list: Option<NonNull<u8>>,
+	free_list: Option<NonZero<u32>>,
 	#[cfg(feature = "tls")]
-	foreign_free_list: AtomicPtr<u8>,
+	foreign_free_list: AtomicU32,
 	bytes_in_reserve: u32,
 }
 
@@ -77,30 +80,27 @@ impl SmallObjectPage {
 		pages[0].write(SmallObjectPage {
 			next_page: None,
 			page_number: 0,
-			object_size: 0,
 			free_list: None,
 			#[cfg(feature = "tls")]
-			foreign_free_list: AtomicPtr::new(ptr::null_mut()),
+			foreign_free_list: AtomicU32::new(0),
 			bytes_in_reserve: PAGE_SIZE - METADATA_ZONE_SIZE,
 		});
 		for i in 1..pages.len() - 1 {
 			pages[i].write(SmallObjectPage {
 				next_page: Some(pages_p.add(i + 1)),
 				page_number: i as u32,
-				object_size: 0,
 				free_list: None,
 				#[cfg(feature = "tls")]
-				foreign_free_list: AtomicPtr::new(ptr::null_mut()),
+				foreign_free_list: AtomicU32::new(0),
 				bytes_in_reserve: PAGE_SIZE,
 			});
 		}
 		pages[pages.len() - 1].write(SmallObjectPage {
 			next_page: None,
 			page_number: (pages.len() - 1) as u32,
-			object_size: 0,
 			free_list: None,
 			#[cfg(feature = "tls")]
-			foreign_free_list: AtomicPtr::new(ptr::null_mut()),
+			foreign_free_list: AtomicU32::new(0),
 			bytes_in_reserve: PAGE_SIZE,
 		});
 
@@ -118,41 +118,52 @@ impl SmallObjectPage {
 		((p as usize) & (ARENA_SIZE as usize - 1)) / (PAGE_SIZE as usize)
 	}
 
-	/// TODO: Measure if passing object size as argument is faster than reading it from the page metadata
-	pub fn alloc(&mut self) -> Option<NonNull<u8>> {
-		if let Some(p) = self.free_list {
-			self.free_list = unsafe { p.cast::<Option<NonNull<u8>>>().read() };
+	pub fn alloc(&mut self, object_size: u32) -> Option<NonNull<u8>> {
+		if let Some(offset) = self.free_list {
+			unsafe {
+				let p = SmallObjectArena::arena(NonNull::new_unchecked(self).cast())
+					.byte_add(offset.get() as usize)
+					.cast();
+				self.free_list = p.cast::<Option<NonZero<u32>>>().read();
 
-			Some(p)
+				Some(p)
+			}
 		} else {
 			#[cfg(feature = "tls")]
 			{
-				if let Some(p) = NonNull::new(self.foreign_free_list.swap(ptr::null_mut(), Ordering::Acquire)) {
-					self.free_list = unsafe { p.cast::<Option<NonNull<u8>>>().read() };
+				if let Some(offset) = NonZero::new(self.foreign_free_list.swap(0, Ordering::Acquire)) {
+					unsafe {
+						let p = SmallObjectArena::arena(NonNull::new_unchecked(self).cast())
+							.byte_add(offset.get() as usize)
+							.cast();
+						self.free_list = p.cast::<Option<NonZero<u32>>>().read();
 
-					return Some(p);
+						return Some(p);
+					}
 				}
 			}
 
-			if self.bytes_in_reserve >= self.object_size {
+			if self.bytes_in_reserve >= object_size {
 				unsafe {
 					let p = SmallObjectArena::arena(NonNull::new_unchecked(self).cast())
 						.cast::<u8>()
 						.byte_add(((self.page_number + 1) * PAGE_SIZE - self.bytes_in_reserve) as usize);
-					self.bytes_in_reserve -= self.object_size;
+					self.bytes_in_reserve -= object_size;
 
-					if self.bytes_in_reserve % 4096 >= self.object_size {
-						let mut q = p.byte_add(self.object_size as usize);
-						self.free_list = Some(q);
-						self.bytes_in_reserve -= self.object_size;
+					if self.bytes_in_reserve % 4096 >= object_size {
+						let mut q = p.byte_add(object_size as usize);
+						let mut offset = SmallObjectArena::object_offset(q);
+						self.free_list = Some(offset);
+						self.bytes_in_reserve -= object_size;
 
-						while self.bytes_in_reserve % 4096 >= self.object_size {
-							let next = q.byte_add(self.object_size as usize);
-							q.cast::<Option<NonNull<u8>>>().write(Some(next));
-							self.bytes_in_reserve -= self.object_size;
+						while self.bytes_in_reserve % 4096 >= object_size {
+							let next = q.byte_add(object_size as usize);
+							offset = offset.checked_add(object_size).unwrap_unchecked();
+							q.cast::<Option<NonZero<u32>>>().write(Some(offset));
+							self.bytes_in_reserve -= object_size;
 							q = next;
 						}
-						q.cast::<Option<NonNull<u8>>>().write(None);
+						q.cast::<Option<NonZero<u32>>>().write(None);
 					}
 
 					Some(p)
@@ -167,8 +178,8 @@ impl SmallObjectPage {
 	#[inline]
 	pub unsafe fn dealloc(p: NonNull<u8>) {
 		let page = &mut unsafe { SmallObjectArena::arena(p).as_mut() }.pages[SmallObjectPage::page_id(p.as_ptr())];
-		p.cast::<Option<NonNull<u8>>>().write(page.free_list);
-		page.free_list = Some(p);
+		p.cast::<Option<NonZero<u32>>>().write(page.free_list);
+		page.free_list = Some(SmallObjectArena::object_offset(p));
 	}
 
 	#[cfg(feature = "tls")]
@@ -180,6 +191,8 @@ impl SmallObjectPage {
 			.cast::<SmallObjectPage>()
 			.add(SmallObjectPage::page_id(p.as_ptr()));
 
+		let p_offset = SmallObjectArena::object_offset(p);
+
 		let owner = arena
 			.byte_add(offset_of!(SmallObjectArena, owner))
 			.cast::<AtomicHeapId>()
@@ -187,18 +200,18 @@ impl SmallObjectPage {
 			.load(Ordering::Relaxed);
 		if owner == heap_id {
 			let page = page.as_mut();
-			p.cast::<Option<NonNull<u8>>>().write(page.free_list);
-			page.free_list = Some(p);
+			p.cast::<Option<NonZero<u32>>>().write(page.free_list);
+			page.free_list = Some(p_offset);
 		} else {
 			let free_list = page
 				.byte_add(offset_of!(SmallObjectPage, foreign_free_list))
-				.cast::<AtomicPtr<u8>>()
+				.cast::<AtomicU32>()
 				.as_ref();
 			loop {
 				let next = free_list.load(Ordering::Relaxed);
-				p.cast::<Option<NonNull<u8>>>().write(NonNull::new(next));
+				p.cast::<Option<NonZero<u32>>>().write(NonZero::new(next));
 				if free_list
-					.compare_exchange(next, p.as_ptr(), Ordering::Release, Ordering::Relaxed)
+					.compare_exchange(next, p_offset.get(), Ordering::Release, Ordering::Relaxed)
 					.is_ok()
 				{
 					break;
