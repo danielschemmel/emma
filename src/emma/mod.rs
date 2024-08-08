@@ -204,8 +204,7 @@ const fn powerlaw_bins_round_up_size(size: NonZero<usize>) -> NonZero<usize> {
 
 	let lz = size.leading_zeros();
 	let lowest_relevant_bit = 1usize << (usize::BITS - 3 - lz);
-	let mask = 1usize << (usize::BITS - 1 - lz) | 1usize << (usize::BITS - 2 - lz) | lowest_relevant_bit;
-	unsafe { NonZero::new_unchecked((size.get() + (lowest_relevant_bit - 1)) & mask) }
+	unsafe { NonZero::new_unchecked((size.get() + (lowest_relevant_bit - 1)) & !(lowest_relevant_bit - 1)) }
 }
 
 /// ONLY FOR USE IN `const_assert` AND FRIENDS! DO NOT USE AT RUNTIME!
@@ -241,6 +240,7 @@ const_assert_eq!(
 	powerlaw_bins_round_up_size(const_non_zero_usize(usize::MAX / 2 + 2)).get(),
 	0b101usize << (usize::BITS - 3)
 );
+const_assert_eq!(powerlaw_bins_round_up_size(const_non_zero_usize(4080)).get(), 4096);
 
 impl Heap {
 	unsafe fn alloc(&mut self, size: NonZero<usize>, alignment: NonZero<usize>) -> *mut u8 {
