@@ -9,7 +9,7 @@ use {
 	core::sync::atomic::{AtomicU32, Ordering},
 };
 
-use crate::mmap::mmap_aligned;
+use crate::mmap::alloc_aligned;
 
 const ARENA_SIZE: u32 = 4 * 1024 * 1024;
 pub const MAXIMUM_OBJECT_ALIGNMENT: u32 = 512 * 1024;
@@ -49,7 +49,7 @@ pub struct Page {
 impl Page {
 	#[inline]
 	pub unsafe fn from_new_arena(#[cfg(feature = "tls")] owner: HeapId) -> Option<NonNull<Page>> {
-		let region = mmap_aligned(
+		let region = alloc_aligned(
 			NonZero::new(ARENA_SIZE as usize).unwrap(),
 			NonZero::new(ARENA_SIZE as usize).unwrap(),
 			3,

@@ -7,7 +7,7 @@ use static_assertions::const_assert_eq;
 use syscalls::Errno;
 
 use super::Heap;
-use crate::mmap::mmap_aligned;
+use crate::mmap::alloc_aligned;
 use crate::sync::syscalls::FUTEX_OWNER_DIED;
 
 #[derive(Debug, Default)]
@@ -80,7 +80,7 @@ impl HeapManager {
 
 		const_assert_eq!(size_of::<ThreadHeap>() % align_of::<ThreadHeap>(), 0);
 		let size = (size_of::<ThreadHeap>() + 4095) & !4095;
-		let mut thread_heap = mmap_aligned(
+		let mut thread_heap = alloc_aligned(
 			NonZero::new(size).unwrap(),
 			NonZero::new(align_of::<ThreadHeap>()).unwrap(),
 			3,

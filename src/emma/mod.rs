@@ -7,7 +7,7 @@ use core::sync::atomic::AtomicU64;
 use arena::{large_object, medium_object, small_object};
 use static_assertions::const_assert_eq;
 
-use crate::mmap::{mmap_aligned, munmap};
+use crate::mmap::{alloc_aligned, munmap};
 #[cfg(not(feature = "tls"))]
 use crate::sync::Futex;
 
@@ -302,7 +302,7 @@ impl Heap {
 				)
 			} else {
 				let size = (size.get() + 4095) & !4095;
-				mmap_aligned(NonZero::new(size).unwrap(), alignment, 3)
+				alloc_aligned(NonZero::new(size).unwrap(), alignment, 3)
 					.map(|ptr| ptr.as_ptr().cast())
 					.unwrap_or(ptr::null_mut())
 			}

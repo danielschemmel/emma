@@ -5,7 +5,7 @@ use core::ptr::NonNull;
 
 pub use self::syscalls::*;
 
-unsafe fn move_mapping_forwards(
+unsafe fn move_mapping_down(
 	old_mapping: NonNull<c_void>,
 	size: NonZero<usize>,
 	move_forwards: NonZero<usize>,
@@ -24,39 +24,33 @@ unsafe fn move_mapping_forwards(
 	.ok()?;
 	assert_eq!(filler, target_addr);
 
-	let merged = match mmap(Some(target_addr), size, prot, flags | MMapFlags::FIXED, None, 0) {
-		Ok(merged) => merged,
-		Err(_err) => {
-			munmap(filler, move_forwards).unwrap();
-			return None;
-		}
-	};
-	assert_eq!(merged, target_addr);
-
 	munmap(target_addr.byte_add(size.get()), move_forwards).unwrap();
 
 	Some(target_addr)
 }
 
-unsafe fn move_mapping_backwards(
+unsafe fn move_mapping_up(
 	old_mapping: NonNull<c_void>,
 	size: NonZero<usize>,
 	move_backwards: NonZero<usize>,
 	prot: MMapProt,
 	flags: MMapFlags,
 ) -> Option<NonNull<c_void>> {
-	let intermediate_size = size.checked_add(move_backwards.get()).unwrap();
-	if mremap_resize(old_mapping, size, intermediate_size).is_err() {
-		return None;
-	}
-
-	let target_addr = old_mapping.byte_add(move_backwards.get());
-	let new_region = mmap(Some(target_addr), size, prot, flags | MMapFlags::FIXED, None, 0).unwrap();
-	assert_eq!(new_region, target_addr);
+	let target_addr = old_mapping.byte_add(size.get());
+	let filler = mmap(
+		Some(target_addr),
+		move_backwards,
+		prot,
+		flags | MMapFlags::FIXED_NOREPLACE,
+		None,
+		0,
+	)
+	.ok()?;
+	assert_eq!(filler, target_addr);
 
 	munmap(old_mapping, move_backwards).unwrap();
 
-	Some(new_region)
+	Some(old_mapping.byte_add(move_backwards.get()))
 }
 
 unsafe fn mmap_aligned_rec(
@@ -74,12 +68,7 @@ unsafe fn mmap_aligned_rec(
 	}
 
 	if let Some(misalignment) = NonZero::new(mapping.as_ptr() as usize & (alignment.get() - 1)) {
-		if mapping.as_ptr() as usize > misalignment.get() {
-			if let Some(mapping) = move_mapping_forwards(mapping, size, misalignment, prot, flags) {
-				return Some(mapping);
-			}
-		}
-		if let Some(mapping) = move_mapping_backwards(
+		if let Some(mapping) = move_mapping_up(
 			mapping,
 			size,
 			NonZero::new(alignment.get() - misalignment.get()).unwrap(),
@@ -88,9 +77,16 @@ unsafe fn mmap_aligned_rec(
 		) {
 			return Some(mapping);
 		}
+		if mapping.as_ptr() as usize > misalignment.get() {
+			if let Some(mapping) = move_mapping_down(mapping, size, misalignment, prot, flags) {
+				return Some(mapping);
+			}
+		}
 
 		if recursive_retries > 0 {
-			mmap_aligned_rec(size, alignment, recursive_retries - 1, Some(mapping))
+			let ret = mmap_aligned_rec(size, alignment, recursive_retries - 1, Some(mapping));
+			munmap(mapping, size).unwrap();
+			ret
 		} else {
 			munmap(mapping, size).unwrap();
 
@@ -101,15 +97,28 @@ unsafe fn mmap_aligned_rec(
 	}
 }
 
-pub unsafe fn mmap_aligned(
+/// Tries to allocate suitably aligned storage from the OS. As this may fail initially, the function will retry up to `recursive_retries` times.
+pub unsafe fn alloc_aligned(
 	size: NonZero<usize>,
 	alignment: NonZero<usize>,
 	recursive_retries: usize,
 ) -> Option<NonNull<c_void>> {
-	assert!(alignment.is_power_of_two());
-	assert_eq!(size.get() & (alignment.get() - 1), 0);
+	debug_assert!(alignment.is_power_of_two());
+	debug_assert_eq!(size.get() & (alignment.get() - 1), 0);
 
 	mmap_aligned_rec(size, alignment, recursive_retries, None)
+}
+
+/// Tries to allocate storage at the exact location provided.
+pub unsafe fn alloc_at(
+	address: NonNull<c_void>,
+	size: NonZero<usize>,
+) -> Option<NonNull<c_void>> {
+	let prot = MMapProt::READ | MMapProt::WRITE;
+	let flags = MMapFlags::PRIVATE | MMapFlags::ANONYMOUS | MMapFlags::NORESERVE;
+	let ret = mmap(Some(address), size, prot, flags, None, 0).ok()?;
+	debug_assert_eq!(ret, address);
+	Some(ret)
 }
 
 #[cfg(test)]
@@ -121,7 +130,7 @@ mod test {
 		let alignment = NonZero::new(alignment).unwrap();
 
 		unsafe {
-			let region = mmap_aligned(size, alignment, 3).unwrap();
+			let region = alloc_aligned(size, alignment, 3).unwrap();
 			munmap(region, size).unwrap();
 		}
 	}
