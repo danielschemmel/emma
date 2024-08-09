@@ -1,3 +1,3 @@
-pub mod large_object;
-pub mod medium_object;
-pub mod small_object;
+pub mod large_objects;
+pub mod medium_objects;
+pub mod small_objects;

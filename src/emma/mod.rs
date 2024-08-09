@@ -1,10 +1,19 @@
+//! Emma is an EMbeddable Memory Allocator. It is no_std and nolibc safe, and has zero binary dependencies.
+//!
+//! Use emma as you would any other allocator:
+//!
+//! ```rust
+//! #[global_allocator]
+//! static EMMA: DefaultEmma = DefaultEmma::new();
+//! ```
+
 use core::alloc::Layout;
 use core::num::NonZero;
 use core::ptr::{self, NonNull};
 #[cfg(feature = "tls")]
 use core::sync::atomic::AtomicU64;
 
-use arena::{large_object, medium_object, small_object};
+use arena::{large_objects, medium_objects, small_objects};
 use static_assertions::const_assert_eq;
 
 use crate::mmap::{alloc_aligned, munmap};
@@ -18,11 +27,13 @@ mod heap_manager;
 
 pub type DefaultEmma = Emma;
 
+/// The main allocator struct. Instantiate to interface with Emma.
 #[derive(Debug)]
 pub struct Emma {
 	#[cfg(not(feature = "tls"))]
 	heap: Futex<Heap>,
 
+	/// TODO: make static!
 	#[cfg(feature = "tls")]
 	heap_manager: heap_manager::HeapManager,
 }
@@ -73,6 +84,7 @@ impl Emma {
 	}
 }
 
+/// The per-thread heap. Can be accessed w/o without locking, but may not be sent between threads.
 #[cfg(feature = "tls")]
 #[thread_local]
 static mut THREAD_HEAP: Option<NonNull<Heap>> = None;
@@ -94,40 +106,52 @@ impl Emma {
 	}
 }
 
-const NUM_SMALL_OBJECT_BINS: usize = ((2 * small_object::MAXIMUM_OBJECT_ALIGNMENT - 8) / 8) as usize;
-const NUM_MEDIUM_OBJECT_BINS: usize = ((u32::ilog2(medium_object::MAXIMUM_OBJECT_ALIGNMENT)
-	- u32::ilog2(small_object::MAXIMUM_OBJECT_ALIGNMENT))
+const NUM_SMALL_OBJECT_BINS: usize = ((2 * small_objects::MAXIMUM_OBJECT_ALIGNMENT - 8) / 8) as usize;
+const NUM_MEDIUM_OBJECT_BINS: usize = ((u32::ilog2(medium_objects::MAXIMUM_OBJECT_ALIGNMENT)
+	- u32::ilog2(small_objects::MAXIMUM_OBJECT_ALIGNMENT))
 	* 4) as usize;
-const NUM_LARGE_OBJECT_BINS: usize = ((u32::ilog2(large_object::MAXIMUM_OBJECT_ALIGNMENT)
-	- u32::ilog2(medium_object::MAXIMUM_OBJECT_ALIGNMENT))
+const NUM_LARGE_OBJECT_BINS: usize = ((u32::ilog2(large_objects::MAXIMUM_OBJECT_ALIGNMENT)
+	- u32::ilog2(medium_objects::MAXIMUM_OBJECT_ALIGNMENT))
 	* 4) as usize;
 
 const_assert_eq!(
 	(NUM_MEDIUM_OBJECT_BINS - 1) as u32,
 	powerlaw_bin_from_size(
-		(medium_object::MAXIMUM_OBJECT_ALIGNMENT
-			+ medium_object::MAXIMUM_OBJECT_ALIGNMENT / 2
-			+ medium_object::MAXIMUM_OBJECT_ALIGNMENT / 4) as usize
-	) - powerlaw_bin_from_size((small_object::MAXIMUM_OBJECT_ALIGNMENT * 2) as usize)
+		(medium_objects::MAXIMUM_OBJECT_ALIGNMENT
+			+ medium_objects::MAXIMUM_OBJECT_ALIGNMENT / 2
+			+ medium_objects::MAXIMUM_OBJECT_ALIGNMENT / 4) as usize
+	) - powerlaw_bin_from_size((small_objects::MAXIMUM_OBJECT_ALIGNMENT * 2) as usize)
 );
 const_assert_eq!(
 	(NUM_LARGE_OBJECT_BINS - 1) as u32,
 	powerlaw_bin_from_size(
-		(large_object::MAXIMUM_OBJECT_ALIGNMENT
-			+ large_object::MAXIMUM_OBJECT_ALIGNMENT / 2
-			+ large_object::MAXIMUM_OBJECT_ALIGNMENT / 4) as usize
-	) - powerlaw_bin_from_size((medium_object::MAXIMUM_OBJECT_ALIGNMENT * 2) as usize)
+		(large_objects::MAXIMUM_OBJECT_ALIGNMENT
+			+ large_objects::MAXIMUM_OBJECT_ALIGNMENT / 2
+			+ large_objects::MAXIMUM_OBJECT_ALIGNMENT / 4) as usize
+	) - powerlaw_bin_from_size((medium_objects::MAXIMUM_OBJECT_ALIGNMENT * 2) as usize)
 );
 
+/// Provides allocation and deallocation capabilities. The actual allocation/deallocation is dispatched, depending of the size of the allocation.
+///
+/// - small objects are allocated using [`small_objects`]
+/// - medium objects are allocated using [`medium_objects`]
+/// - large objects are allocated using [`large_objects`]
+/// - huge objects are allocated directly using [`crate::mmap`]
 #[derive(Debug)]
 struct Heap {
+	/// An id to identify this heap. The id is guaranteed to not be zero (which means that the heap id zero can be used to indicate no heap).
 	#[cfg(feature = "tls")]
 	id: HeapId,
-	small_object_reserve: Option<NonNull<small_object::Page>>,
-	small_object_pages: [Option<NonNull<small_object::Page>>; NUM_SMALL_OBJECT_BINS],
-	medium_object_reserve: Option<NonNull<medium_object::Page>>,
-	medium_object_pages: [Option<NonNull<medium_object::Page>>; NUM_MEDIUM_OBJECT_BINS],
-	large_object_pages: [Option<NonNull<large_object::Page>>; NUM_LARGE_OBJECT_BINS],
+	/// A singly-linked list of free pages suitable for small objects. The next page is accessed via [`small_objects::Page::next_page`].
+	small_object_reserve: Option<NonNull<small_objects::Page>>,
+	/// Each element of this array contains a singly-linked list of pages suitable for allocation of small objects of one specific size. The next page is accessed via [`small_objects::Page::next_page`].
+	small_object_pages: [Option<NonNull<small_objects::Page>>; NUM_SMALL_OBJECT_BINS],
+	/// A singly-linked list of free pages suitable for medium objects. The next page is accessed via [`medium_objects::Page::next_page`].
+	medium_object_reserve: Option<NonNull<medium_objects::Page>>,
+	/// Each element of this array contains a singly-linked list of pages suitable for allocation of medium objects of one specific size. The next page is accessed via [`medium_objects::Page::next_page`].
+	medium_object_pages: [Option<NonNull<medium_objects::Page>>; NUM_MEDIUM_OBJECT_BINS],
+	/// Each element of this array contains a singly-linked list of pages suitable for allocation of large objects of one specific size. The next page is accessed via [`large_objects::Page::next_page`].
+	large_object_pages: [Option<NonNull<large_objects::Page>>; NUM_LARGE_OBJECT_BINS],
 }
 
 #[cfg(feature = "tls")]
@@ -247,7 +271,7 @@ impl Heap {
 		let bin = (size.get() + 7) / 8;
 		debug_assert!(bin > 0);
 		if bin <= self.small_object_pages.len() {
-			small_object::alloc(
+			small_objects::alloc(
 				&mut self.small_object_pages[bin - 1],
 				&mut self.small_object_reserve,
 				(bin * 8) as u32,
@@ -258,9 +282,9 @@ impl Heap {
 			let bin = powerlaw_bin_from_size(size.get());
 			if bin
 				<= powerlaw_bin_from_size(
-					(medium_object::MAXIMUM_OBJECT_ALIGNMENT
-						+ medium_object::MAXIMUM_OBJECT_ALIGNMENT / 2
-						+ medium_object::MAXIMUM_OBJECT_ALIGNMENT / 4) as usize,
+					(medium_objects::MAXIMUM_OBJECT_ALIGNMENT
+						+ medium_objects::MAXIMUM_OBJECT_ALIGNMENT / 2
+						+ medium_objects::MAXIMUM_OBJECT_ALIGNMENT / 4) as usize,
 				) {
 				if (powerlaw_bins_round_up_size(size).get() as u32 as usize) < size.get() {
 					panic!("{}|{}", powerlaw_bins_round_up_size(size).get() as u32, size.get());
@@ -274,9 +298,9 @@ impl Heap {
 						bin
 					);
 				}
-				medium_object::alloc(
+				medium_objects::alloc(
 					&mut self.medium_object_pages
-						[(bin - powerlaw_bin_from_size((small_object::MAXIMUM_OBJECT_ALIGNMENT * 2) as usize)) as usize],
+						[(bin - powerlaw_bin_from_size((small_objects::MAXIMUM_OBJECT_ALIGNMENT * 2) as usize)) as usize],
 					&mut self.medium_object_reserve,
 					powerlaw_bins_round_up_size(size).get() as u32,
 					#[cfg(feature = "tls")]
@@ -284,18 +308,18 @@ impl Heap {
 				)
 			} else if bin
 				<= powerlaw_bin_from_size(
-					(large_object::MAXIMUM_OBJECT_ALIGNMENT
-						+ large_object::MAXIMUM_OBJECT_ALIGNMENT / 2
-						+ large_object::MAXIMUM_OBJECT_ALIGNMENT / 4) as usize,
+					(large_objects::MAXIMUM_OBJECT_ALIGNMENT
+						+ large_objects::MAXIMUM_OBJECT_ALIGNMENT / 2
+						+ large_objects::MAXIMUM_OBJECT_ALIGNMENT / 4) as usize,
 				) {
 				debug_assert!(powerlaw_bins_round_up_size(size).get() as u32 as usize >= size.get());
 				debug_assert_eq!(
 					bin,
 					powerlaw_bin_from_size(powerlaw_bins_round_up_size(size).get() as u32 as usize)
 				);
-				large_object::alloc(
+				large_objects::alloc(
 					&mut self.large_object_pages
-						[(bin - powerlaw_bin_from_size((medium_object::MAXIMUM_OBJECT_ALIGNMENT * 2) as usize)) as usize],
+						[(bin - powerlaw_bin_from_size((medium_objects::MAXIMUM_OBJECT_ALIGNMENT * 2) as usize)) as usize],
 					powerlaw_bins_round_up_size(size).get() as u32,
 					#[cfg(feature = "tls")]
 					self.id,
@@ -320,7 +344,7 @@ impl Heap {
 		debug_assert!(bin > 0);
 		if bin <= NUM_SMALL_OBJECT_BINS {
 			debug_assert!(!ptr.is_null());
-			small_object::Page::dealloc(
+			small_objects::Page::dealloc(
 				#[cfg(feature = "tls")]
 				id,
 				NonNull::new_unchecked(ptr),
@@ -329,22 +353,22 @@ impl Heap {
 			let bin = powerlaw_bin_from_size(size.get());
 			if bin
 				<= powerlaw_bin_from_size(
-					(medium_object::MAXIMUM_OBJECT_ALIGNMENT
-						+ medium_object::MAXIMUM_OBJECT_ALIGNMENT / 2
-						+ medium_object::MAXIMUM_OBJECT_ALIGNMENT / 4) as usize,
+					(medium_objects::MAXIMUM_OBJECT_ALIGNMENT
+						+ medium_objects::MAXIMUM_OBJECT_ALIGNMENT / 2
+						+ medium_objects::MAXIMUM_OBJECT_ALIGNMENT / 4) as usize,
 				) {
-				medium_object::Page::dealloc(
+				medium_objects::Page::dealloc(
 					#[cfg(feature = "tls")]
 					id,
 					NonNull::new_unchecked(ptr),
 				);
 			} else if bin
 				<= powerlaw_bin_from_size(
-					(large_object::MAXIMUM_OBJECT_ALIGNMENT
-						+ large_object::MAXIMUM_OBJECT_ALIGNMENT / 2
-						+ large_object::MAXIMUM_OBJECT_ALIGNMENT / 4) as usize,
+					(large_objects::MAXIMUM_OBJECT_ALIGNMENT
+						+ large_objects::MAXIMUM_OBJECT_ALIGNMENT / 2
+						+ large_objects::MAXIMUM_OBJECT_ALIGNMENT / 4) as usize,
 				) {
-				large_object::Page::dealloc(
+				large_objects::Page::dealloc(
 					#[cfg(feature = "tls")]
 					id,
 					NonNull::new_unchecked(ptr),
@@ -419,25 +443,25 @@ unsafe impl alloc::alloc::GlobalAlloc for Emma {
 			let old_bin = powerlaw_bin_from_size(layout.size());
 			if old_bin
 				<= powerlaw_bin_from_size(
-					(large_object::MAXIMUM_OBJECT_ALIGNMENT
-						+ large_object::MAXIMUM_OBJECT_ALIGNMENT / 2
-						+ large_object::MAXIMUM_OBJECT_ALIGNMENT / 4) as usize,
+					(large_objects::MAXIMUM_OBJECT_ALIGNMENT
+						+ large_objects::MAXIMUM_OBJECT_ALIGNMENT / 2
+						+ large_objects::MAXIMUM_OBJECT_ALIGNMENT / 4) as usize,
 				) {
 				let new_bin = powerlaw_bin_from_size(new_layout.size());
 				if old_bin == new_bin {
 					return ptr;
 				}
 			} else if new_layout.size()
-				> (large_object::MAXIMUM_OBJECT_ALIGNMENT
-					+ large_object::MAXIMUM_OBJECT_ALIGNMENT / 2
-					+ large_object::MAXIMUM_OBJECT_ALIGNMENT / 4) as usize
+				> (large_objects::MAXIMUM_OBJECT_ALIGNMENT
+					+ large_objects::MAXIMUM_OBJECT_ALIGNMENT / 2
+					+ large_objects::MAXIMUM_OBJECT_ALIGNMENT / 4) as usize
 			{
 				debug_assert!(
 					powerlaw_bin_from_size(new_layout.size())
 						> powerlaw_bin_from_size(
-							(large_object::MAXIMUM_OBJECT_ALIGNMENT
-								+ large_object::MAXIMUM_OBJECT_ALIGNMENT / 2
-								+ large_object::MAXIMUM_OBJECT_ALIGNMENT / 4) as usize,
+							(large_objects::MAXIMUM_OBJECT_ALIGNMENT
+								+ large_objects::MAXIMUM_OBJECT_ALIGNMENT / 2
+								+ large_objects::MAXIMUM_OBJECT_ALIGNMENT / 4) as usize,
 						)
 				);
 
