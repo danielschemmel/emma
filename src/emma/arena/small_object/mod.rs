@@ -115,6 +115,15 @@ impl Page {
 	}
 
 	#[inline]
+	unsafe fn is_on_page(&mut self, p: *mut u8) -> bool {
+		let start = Arena::arena(NonNull::new(self).unwrap().cast())
+			.cast::<u8>()
+			.byte_add(self.page_number as usize * PAGE_SIZE as usize);
+		let end = start.byte_add(PAGE_SIZE as usize);
+		start.as_ptr() <= p && p < end.as_ptr()
+	}
+
+	#[inline]
 	pub fn alloc(&mut self, object_size: u32) -> Option<NonNull<u8>> {
 		if let Some(offset) = self.free_list {
 			unsafe {
@@ -123,6 +132,7 @@ impl Page {
 					.cast();
 				self.free_list = p.cast::<Option<NonZero<u32>>>().read();
 
+				debug_assert!(self.is_on_page(p.as_ptr()));
 				Some(p)
 			}
 		} else {
@@ -135,6 +145,7 @@ impl Page {
 							.cast();
 						self.free_list = p.cast::<Option<NonZero<u32>>>().read();
 
+						debug_assert!(self.is_on_page(p.as_ptr()));
 						return Some(p);
 					}
 				}
@@ -163,6 +174,7 @@ impl Page {
 						q.cast::<Option<NonZero<u32>>>().write(None);
 					}
 
+					debug_assert!(self.is_on_page(p.as_ptr()));
 					return Some(p);
 				}
 			}
