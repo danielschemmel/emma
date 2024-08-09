@@ -1,12 +1,3 @@
-//! Emma is an EMbeddable Memory Allocator. It is no_std and nolibc safe, and has zero binary dependencies.
-//!
-//! Use emma as you would any other allocator:
-//!
-//! ```rust
-//! #[global_allocator]
-//! static EMMA: DefaultEmma = DefaultEmma::new();
-//! ```
-
 use core::alloc::Layout;
 use core::num::NonZero;
 use core::ptr::{self, NonNull};
