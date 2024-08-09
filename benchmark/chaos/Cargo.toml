@@ -1,0 +1,18 @@
+[package]
+name = "chaos"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"
+lto = true
+debug = true
+
+[dependencies]
+allocator = { path = "../allocator" }
+num-bigint = "0.4.6"
+static_assertions = "1.1.0"

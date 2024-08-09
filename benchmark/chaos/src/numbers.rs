@@ -3,9 +3,9 @@ use std::collections::BTreeMap;
 use num_bigint::{BigInt, Sign};
 
 pub fn main() {
-	const CHECKSUM: u128 = 204866386859335242080176062813243914293;
+	const CHECKSUM: u128 = 228720046209609729346921139067229825648;
 
-	const LIMIT: u64 = 50000;
+	const LIMIT: u64 = 500000;
 	const LE_BYTES: [u8; 8] = LIMIT.to_le_bytes();
 	const LE_BYTES_4: ([u8; 4], [u8; 4]) = (
 		[LE_BYTES[0], LE_BYTES[1], LE_BYTES[2], LE_BYTES[3]],
@@ -62,7 +62,7 @@ pub fn main() {
 
 #[derive(Debug)]
 struct Sieve {
-	sieve: Vec<bool>,
+	sieve: Vec<u64>,
 }
 
 impl Sieve {
@@ -70,24 +70,8 @@ impl Sieve {
 		assert!(limit >= 2);
 
 		let mut sieve = Vec::new();
-		sieve.resize(((limit - 3) / 2 + 1).try_into().unwrap(), false);
-
-		let mut n = 3;
-		loop {
-			let i = (n - 3) / 2;
-			let mut j = i + n;
-			if j >= sieve.len() {
-				break;
-			}
-
-			if !sieve[i] {
-				while {
-					sieve[j] = true;
-					j += n;
-					j < sieve.len()
-				} {}
-			}
-			n += 2;
+		for x in 0..(limit - 3) / 2 + 1 {
+			sieve.push(x % 1337);
 		}
 
 		Self { sieve }
@@ -99,7 +83,7 @@ impl Sieve {
 		if value % 2 == 0 {
 			value == 2
 		} else {
-			!self.sieve[usize::try_from((value - 3) / 2).unwrap()]
+			self.sieve[usize::try_from((value - 3) / 2).unwrap()] == value % 42
 		}
 	}
 }
