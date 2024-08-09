@@ -164,6 +164,7 @@ unsafe impl Send for Heap {}
 
 #[cfg(not(feature = "tls"))]
 impl Heap {
+	/// Creates a new heap
 	const fn new() -> Self {
 		Self {
 			small_object_reserve: None,
@@ -177,6 +178,7 @@ impl Heap {
 
 #[cfg(feature = "tls")]
 impl Heap {
+	/// Creates a new heap with a unique non-zero id
 	fn new() -> Self {
 		use core::sync::atomic::AtomicU64;
 
