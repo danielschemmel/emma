@@ -57,15 +57,10 @@ unsafe fn mmap_aligned_rec(
 	size: NonZero<usize>,
 	alignment: NonZero<usize>,
 	recursive_retries: usize,
-	leftover_mapping: Option<NonNull<c_void>>,
 ) -> Option<NonNull<c_void>> {
 	let prot = MMapProt::READ | MMapProt::WRITE;
 	let flags = MMapFlags::PRIVATE | MMapFlags::ANONYMOUS | MMapFlags::NORESERVE;
 	let mapping = mmap(None, size, prot, flags, None, 0).ok()?;
-
-	if let Some(leftover_mapping) = leftover_mapping {
-		munmap(leftover_mapping, size).unwrap();
-	}
 
 	if let Some(misalignment) = NonZero::new(mapping.as_ptr() as usize & (alignment.get() - 1)) {
 		if let Some(mapping) = move_mapping_up(
@@ -84,7 +79,7 @@ unsafe fn mmap_aligned_rec(
 		}
 
 		if recursive_retries > 0 {
-			let ret = mmap_aligned_rec(size, alignment, recursive_retries - 1, Some(mapping));
+			let ret = mmap_aligned_rec(size, alignment, recursive_retries - 1);
 			munmap(mapping, size).unwrap();
 			ret
 		} else {
@@ -97,7 +92,8 @@ unsafe fn mmap_aligned_rec(
 	}
 }
 
-/// Tries to allocate suitably aligned storage from the OS. As this may fail initially, the function will retry up to `recursive_retries` times.
+/// Tries to allocate suitably aligned storage from the OS. As this may fail initially, the function will retry up to
+/// `recursive_retries` times.
 pub unsafe fn alloc_aligned(
 	size: NonZero<usize>,
 	alignment: NonZero<usize>,
@@ -106,14 +102,11 @@ pub unsafe fn alloc_aligned(
 	debug_assert!(alignment.is_power_of_two());
 	debug_assert_eq!(size.get() & (alignment.get() - 1), 0);
 
-	mmap_aligned_rec(size, alignment, recursive_retries, None)
+	mmap_aligned_rec(size, alignment, recursive_retries)
 }
 
 /// Tries to allocate storage at the exact location provided.
-pub unsafe fn alloc_at(
-	address: NonNull<c_void>,
-	size: NonZero<usize>,
-) -> Option<NonNull<c_void>> {
+pub unsafe fn alloc_at(address: NonNull<c_void>, size: NonZero<usize>) -> Option<NonNull<c_void>> {
 	let prot = MMapProt::READ | MMapProt::WRITE;
 	let flags = MMapFlags::PRIVATE | MMapFlags::ANONYMOUS | MMapFlags::NORESERVE;
 	let ret = mmap(Some(address), size, prot, flags, None, 0).ok()?;
