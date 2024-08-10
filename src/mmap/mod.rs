@@ -3,6 +3,8 @@ use core::ffi::c_void;
 use core::num::NonZero;
 use core::ptr::NonNull;
 
+use linux_raw_sys::general::MADV_POPULATE_WRITE;
+
 pub use self::syscalls::*;
 
 unsafe fn move_mapping_down(
@@ -94,6 +96,9 @@ unsafe fn mmap_aligned_rec(
 
 /// Tries to allocate suitably aligned storage from the OS. As this may fail initially, the function will retry up to
 /// `recursive_retries` times.
+///
+/// This function allocates virtual memory, not physical memory. However, it also notifies the OS, that the first page
+/// will be needed soon.
 pub unsafe fn alloc_aligned(
 	size: NonZero<usize>,
 	alignment: NonZero<usize>,
@@ -102,7 +107,12 @@ pub unsafe fn alloc_aligned(
 	debug_assert!(alignment.is_power_of_two());
 	debug_assert_eq!(size.get() & (alignment.get() - 1), 0);
 
-	mmap_aligned_rec(size, alignment, recursive_retries)
+	if let Some(mapping) = mmap_aligned_rec(size, alignment, recursive_retries) {
+		madvise(mapping, 4096, MAdviseAdvice::WILLNEED).ok();
+		Some(mapping)
+	} else {
+		None
+	}
 }
 
 /// Tries to allocate storage at the exact location provided.
