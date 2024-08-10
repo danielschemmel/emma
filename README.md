@@ -18,7 +18,7 @@ At the moment, `emma` exclusively targets linux on `x86_64`.
 	- `tls` disabled: The heap may end up permanently locked, deadlocking other threads.
 	- `tls` enabled: The heap may get corrupted as soon as another thread acquires the per-thread-heap from the dead thread.
 - Embedding multiple `emma`s into one process should work, but unless their symbols are renamed they may share data structures behind the scenes.
-- `emma` cannot full clean up after itself, even if all allocations are returned.
+- An `emma` instance does not return all its resources, even if all allocations are returned. This is reasonable for a global allocator, but makes it not as useful as a temporary allocator.
 - `emma` is not async-signal-safe, i.e., you may not de-/allocate memory in a signal handler. (The same probably holds true for your default memory allocator; POSIX does not list `malloc` or `free` as async-signal safe either.)
 
 # Features
