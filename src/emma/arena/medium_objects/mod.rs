@@ -189,7 +189,7 @@ impl Page {
 	#[cfg(not(feature = "tls"))]
 	#[inline]
 	pub unsafe fn dealloc(p: NonNull<u8>) {
-		let page = &mut unsafe { Arena::arena(p).as_mut() }.pages[Page::page_id(p.as_ptr())];
+		let page = &mut unsafe { Arena::from_inner_ptr(p).as_mut() }.pages[Page::page_id(p.as_ptr())];
 		p.cast::<Option<NonZero<u32>>>().write(page.free_list);
 		page.free_list = Some(Arena::object_offset(p));
 	}
