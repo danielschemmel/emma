@@ -1,9 +1,9 @@
+#![allow(dead_code)]
+
 mod syscalls;
 use core::ffi::c_void;
 use core::num::NonZero;
 use core::ptr::NonNull;
-
-use linux_raw_sys::general::MADV_POPULATE_WRITE;
 
 pub use self::syscalls::*;
 

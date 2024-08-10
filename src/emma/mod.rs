@@ -31,6 +31,7 @@ pub struct Emma {
 
 impl Emma {
 	/// Create a new [`Emma`] instance.
+	#[allow(clippy::new_without_default)] // Sadly, default is not const.
 	pub const fn new() -> Self {
 		Self {
 			#[cfg(not(feature = "tls"))]
@@ -74,7 +75,7 @@ impl Emma {
 		#[cfg(debug_assertions)]
 		const DEBUG_ASSERTIONS_ENABLED: &str = "enabled";
 		writeln!(f, "debug assertions {}", DEBUG_ASSERTIONS_ENABLED)?;
-		writeln!(f, "")?;
+		writeln!(f)?;
 
 		writeln!(f, "Object Sizes")?;
 		writeln!(f, "Emma: size {} align {}", size_of::<Self>(), align_of::<Self>())?;
@@ -208,7 +209,7 @@ const fn powerlaw_bin_from_size(size: usize) -> u32 {
 	debug_assert!(size >= 0b100);
 
 	let lz = size.leading_zeros();
-	(usize::BITS - lz - 3) * 4 + (((size + (1 << usize::BITS - lz - 3) - 1) >> (usize::BITS - lz - 3)) as u32 - 4)
+	(usize::BITS - lz - 3) * 4 + (((size + (1 << (usize::BITS - lz - 3)) - 1) >> (usize::BITS - lz - 3)) as u32 - 4)
 }
 
 const_assert_eq!(powerlaw_bin_from_size(0b100), 0);
@@ -243,6 +244,7 @@ const fn powerlaw_bins_round_up_size(size: NonZero<usize>) -> NonZero<usize> {
 /// ONLY FOR USE IN `const_assert` AND FRIENDS! DO NOT USE AT RUNTIME!
 #[allow(dead_code)]
 #[allow(unconditional_panic)]
+#[allow(clippy::out_of_bounds_indexing)]
 const fn const_non_zero_usize(x: usize) -> NonZero<usize> {
 	match NonZero::new(x) {
 		Some(val) => val,
@@ -476,24 +478,26 @@ unsafe impl alloc::alloc::GlobalAlloc for Emma {
 
 				let old_size = (layout.size() + 4095) & !4095;
 				let new_size = (new_layout.size() + 4095) & !4095;
-				if old_size == new_size {
-					return ptr;
-				} else if old_size > new_size {
-					crate::mmap::mremap_resize(
-						NonNull::new_unchecked(ptr).cast(),
-						NonZero::new_unchecked(old_size),
-						NonZero::new_unchecked(new_size),
-					)
-					.unwrap();
-					return ptr;
-				} else {
-					if crate::mmap::mremap_resize(
-						NonNull::new_unchecked(ptr).cast(),
-						NonZero::new_unchecked(old_size),
-						NonZero::new_unchecked(new_size),
-					)
-					.is_ok()
-					{
+				match old_size.cmp(&new_size) {
+					core::cmp::Ordering::Less => {
+						if crate::mmap::mremap_resize(
+							NonNull::new_unchecked(ptr).cast(),
+							NonZero::new_unchecked(old_size),
+							NonZero::new_unchecked(new_size),
+						)
+						.is_ok()
+						{
+							return ptr;
+						}
+					}
+					core::cmp::Ordering::Equal => return ptr,
+					core::cmp::Ordering::Greater => {
+						crate::mmap::mremap_resize(
+							NonNull::new_unchecked(ptr).cast(),
+							NonZero::new_unchecked(old_size),
+							NonZero::new_unchecked(new_size),
+						)
+						.unwrap();
 						return ptr;
 					}
 				}

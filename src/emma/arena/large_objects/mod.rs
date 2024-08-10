@@ -26,8 +26,9 @@ const_assert!(MAXIMUM_OBJECT_ALIGNMENT.is_power_of_two());
 const_assert!(size_of::<Arena>() < ARENA_SIZE as usize);
 
 impl Arena {
+	/// Makes a pointer to the arena from any pointer to a location inside the arena.
 	#[inline]
-	unsafe fn arena(p: NonNull<u8>) -> NonNull<Arena> {
+	unsafe fn from_inner_ptr(p: NonNull<u8>) -> NonNull<Arena> {
 		NonNull::new_unchecked(((p.as_ptr() as usize) & !(ARENA_SIZE as usize - 1)) as *mut Arena)
 	}
 
@@ -74,7 +75,7 @@ impl Page {
 	pub fn alloc(&mut self, object_size: u32) -> Option<NonNull<u8>> {
 		if let Some(offset) = self.free_list {
 			unsafe {
-				let p = Arena::arena(NonNull::new_unchecked(self).cast())
+				let p = Arena::from_inner_ptr(NonNull::new_unchecked(self).cast())
 					.byte_add(offset.get() as usize)
 					.cast();
 				self.free_list = p.cast::<Option<NonZero<u32>>>().read();
@@ -86,7 +87,7 @@ impl Page {
 			{
 				if let Some(offset) = NonZero::new(self.foreign_free_list.swap(0, Ordering::Acquire)) {
 					unsafe {
-						let p = Arena::arena(NonNull::new_unchecked(self).cast())
+						let p = Arena::from_inner_ptr(NonNull::new_unchecked(self).cast())
 							.byte_add(offset.get() as usize)
 							.cast();
 						self.free_list = p.cast::<Option<NonZero<u32>>>().read();
@@ -99,7 +100,7 @@ impl Page {
 			if self.bytes_in_reserve >= object_size {
 				self.bytes_in_reserve -= self.bytes_in_reserve % object_size;
 				unsafe {
-					let p = Arena::arena(NonNull::new_unchecked(self).cast())
+					let p = Arena::from_inner_ptr(NonNull::new_unchecked(self).cast())
 						.cast::<u8>()
 						.byte_add((ARENA_SIZE - self.bytes_in_reserve) as usize);
 					self.bytes_in_reserve -= object_size;
@@ -123,7 +124,7 @@ impl Page {
 	#[cfg(feature = "tls")]
 	#[inline]
 	pub unsafe fn dealloc(heap_id: HeapId, p: NonNull<u8>) {
-		let arena = Arena::arena(p);
+		let arena = Arena::from_inner_ptr(p);
 		let mut page = arena.byte_add(offset_of!(Arena, page)).cast::<Page>();
 
 		let p_offset = Arena::object_offset(p);
@@ -159,23 +160,19 @@ pub unsafe fn alloc(bin: &mut Option<NonNull<Page>>, object_size: u32, #[cfg(fea
 	{
 		let mut pp: *mut Option<NonNull<Page>> = bin;
 		let mut p = *bin;
-		loop {
-			if let Some(mut q) = p {
-				let page = q.as_mut();
+		while let Some(mut q) = p {
+			let page = q.as_mut();
 
-				if let Some(ret) = page.alloc(object_size) {
-					if p != *bin {
-						*pp.as_mut().unwrap_unchecked() = page.next_page;
-						page.next_page = *bin;
-						*bin = p;
-					}
-					return ret.as_ptr();
+			if let Some(ret) = page.alloc(object_size) {
+				if p != *bin {
+					*pp.as_mut().unwrap_unchecked() = page.next_page;
+					page.next_page = *bin;
+					*bin = p;
 				}
-				pp = &mut page.next_page;
-				p = page.next_page;
-			} else {
-				break;
+				return ret.as_ptr();
 			}
+			pp = &mut page.next_page;
+			p = page.next_page;
 		}
 	}
 
@@ -189,7 +186,7 @@ pub unsafe fn alloc(bin: &mut Option<NonNull<Page>>, object_size: u32, #[cfg(fea
 
 		let ret = page.as_mut().alloc(object_size);
 		debug_assert!(ret.is_some());
-		return unsafe { ret.unwrap_unchecked() }.as_ptr();
+		unsafe { ret.unwrap_unchecked() }.as_ptr()
 	} else {
 		// OOM?
 		ptr::null_mut()
