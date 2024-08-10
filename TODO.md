@@ -10,7 +10,6 @@ A memory allocator always needs more and better tests!
 ## Benchmark Better
 - The current set of benchmarks is not really comprehensive enough.
 - Benchmarks should be executed interleaved rather than in large runs of the same allocator.
-- All compilations should be done first, so that editing the sources becomes possible while the actual benchmarks run.
 - Argument parsing should replace editing the global constants.
 
 ## Investigate `fork`

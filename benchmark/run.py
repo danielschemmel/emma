@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 
+import json
 import multiprocessing
-import subprocess
 import numpy
 import os
 import re
 import scipy
 import shutil
+import subprocess
 from matplotlib import pyplot as plt
 from pathlib import Path
 from subprocess import run
@@ -20,14 +21,15 @@ BENCHMARKS = [
 
 ALLOCATORS = [
 	"emma-tls",
-	"std",
-	"libc",
-	"jemalloc",
-	"mimalloc",
+	"emma-clean-tls",
+#	"std",
+#	"libc",
+#	"jemalloc",
+#	"mimalloc",
 ]
 
 WARMUP = 2
-RUNS = 10
+RUNS = 50
 
 DIR = Path(__file__).absolute().parent
 BIN_DIR = DIR / "bin"
@@ -60,6 +62,28 @@ def stats(sample_data, confidence_level=0.99):
 
 	return (sample_mean, confidence_interval)
 
+def compile_bench(benchmark, allocator):
+	benchmark = Path(benchmark)
+
+	allocator_feature = allocator
+	git_stash_pop = False
+	if allocator.startswith("emma-clean-"):
+		allocator_feature = "emma-" + allocator[len("emma-clean-"):]
+		os.chdir(DIR)
+		if run(["git", "diff", "--quiet", "../src"]).returncode != 0:
+			run(["git", "stash", "push", "../src"], check=True)
+			git_stash_pop = True
+
+	try:
+		target_dir = BIN_DIR / benchmark / allocator
+		os.makedirs(target_dir, exist_ok=True)
+		os.chdir(DIR / benchmark)
+		run(["cargo", "build", f"--target-dir={target_dir}", f"--features=allocator/{allocator_feature}", "--release"], check=True)
+	finally:
+		if git_stash_pop:
+			os.chdir(DIR)
+			run(["git", "stash", "pop"], check=True)
+
 def run_bench(benchmark, args):
 	benchmark = Path(benchmark)
 	times = []
@@ -67,12 +91,7 @@ def run_bench(benchmark, args):
 	for allocator in ALLOCATORS:
 		print(f"{benchmark}/{allocator}")
 
-		target_dir = BIN_DIR / benchmark / allocator
-		os.makedirs(target_dir, exist_ok=True)
-		os.chdir(DIR / benchmark)
-		run(["cargo", "build", f"--target-dir={target_dir}", f"--features=allocator/{allocator}", "--release"], check=True)
-
-		target = target_dir / "release" / benchmark.name
+		target = BIN_DIR / benchmark / allocator / "release" / benchmark.name
 		measurements = []
 		for i in range(RUNS + WARMUP):
 			print(i + 1, "...", sep="", end="", flush=True)
@@ -87,6 +106,10 @@ def run_bench(benchmark, args):
 		print()
 	return (times, rsss)
 
+for (benchmark, _args) in BENCHMARKS:
+	for allocator in ALLOCATORS:
+		compile_bench(benchmark, allocator)
+
 shutil.rmtree(PLOT_DIR, ignore_errors=True)
 for (benchmark, args) in BENCHMARKS:
 	os.makedirs(PLOT_DIR / benchmark)
@@ -96,6 +119,9 @@ for (benchmark, args) in BENCHMARKS:
 	(rsss, rss_mean, rss_ci) = list(zip(*rss))
 
 	x = list(range(0, len(ALLOCATORS)))
+
+	with open(PLOT_DIR / benchmark / "time.json", "w") as f:
+		json.dump({"allocators": ALLOCATORS, "mean": time_mean, "confidence_interval": time_ci, "values": times}, f)
 
 	fig, ax = plt.subplots()
 	ax.set_ylabel("Allocator")
@@ -112,6 +138,9 @@ for (benchmark, args) in BENCHMARKS:
 	ax.violinplot(times, x, showmeans=True)
 	ax.set_ylim(bottom=0, top=max(map(max, times))*1.05)
 	plt.savefig(PLOT_DIR / benchmark / "time.violin.pdf")
+
+	with open(PLOT_DIR / benchmark / "rss.json", "w") as f:
+		json.dump({"allocators": ALLOCATORS, "mean": rss_mean, "confidence_interval": rss_ci, "values": rsss}, f)
 
 	fig, ax = plt.subplots()
 	ax.set_ylabel("Allocator")
