@@ -7,7 +7,7 @@
 This means that multiple `emma` instances can be used in the same process without ever noticing one another.
 
 # Performance
-`emma` seems roughly in the same ball-park as other state-of-the-art allocators.
+`emma` seems not far behind (other) state-of-the-art allocators.
 
 # Target Architecture
 At the moment, `emma` exclusively targets linux on `x86_64`.
