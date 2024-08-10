@@ -4,7 +4,7 @@ version = "0.0.0"
 authors = ["Daniel Schemmel <daniel@schemmel.net"]
 repository = "https://github.com/danielschemmel/emma/"
 license = "MIT OR Apache-2.0"
-description = "A full-fledged `no_std` and \"no-libc\" capable memory allocator that does not rely on `libc`."
+description = "A full-fledged `no_std` and \"no-libc\" capable memory allocator."
 keywords = ["alloc", "allocator", "malloc", "no_std"]
 readme = "README.md"
 
