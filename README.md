@@ -4,7 +4,8 @@
 - No direct or indirect usage of `libc` (or any other non-rust library): `emma` uses raw syscalls instead.
 - No usage of shared resources: Instead of `brk`/`sbrk` to modify the _shared_ data segment, `emma` only ever maps its own segment(s) using `mmap`.
 
-This means that multiple `emma` instances can be used in the same process without ever noticing one another.
+This means that multiple `emma` instances can coexist with other allocators the same process.
+If its symbols are renamed, `emma` can even coexist with other copies of itself!
 
 # Performance
 `emma` seems not far behind (other) state-of-the-art allocators.
