@@ -4,7 +4,7 @@
 //!
 //! ```rust
 //! #[global_allocator]
-//! static EMMA: DefaultEmma = DefaultEmma::new();
+//! static EMMA: emma::DefaultEmma = emma::DefaultEmma::new();
 //! ```
 
 #![cfg_attr(not(test), no_std)]

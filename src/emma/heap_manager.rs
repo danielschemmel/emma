@@ -11,9 +11,15 @@ use crate::mmap::alloc_aligned;
 use crate::sync::syscalls::FUTEX_OWNER_DIED;
 
 #[derive(Debug, Default)]
-pub(crate) struct HeapManager {
-	heaps: AtomicPtr<ThreadHeap>,
-}
+pub(crate) struct HeapManager;
+
+/// A singly-linked list of all [`ThreadHeap`]s ever acquired. Each of these may or may not be currently owned by a
+/// thread, which may or may not be the currently active thread.
+///
+/// This is not a member of [`HeapManager`], as we use thread-local storage to remember the heap per thread, which
+/// causes them to be shared across different [`Emma`](super::Emma) instances. This means that the [`ThreadManager`]
+/// also needs to be (effectively) shared across [`Emma`](super::Emma) instances.
+static THREAD_HEAPS: AtomicPtr<ThreadHeap> = AtomicPtr::new(ptr::null_mut());
 
 #[derive(Debug)]
 struct ThreadHeap {
@@ -34,13 +40,11 @@ impl ThreadHeap {
 
 impl HeapManager {
 	pub(crate) const fn new() -> Self {
-		Self {
-			heaps: AtomicPtr::new(ptr::null_mut()),
-		}
+		Self
 	}
 
 	pub unsafe fn acquire_thread_heap(&self) -> Option<NonNull<Heap>> {
-		let mut p = self.heaps.load(Ordering::Relaxed);
+		let mut p = THREAD_HEAPS.load(Ordering::Relaxed);
 		while let Some(thread_heap) = NonNull::new(p) {
 			let thread_lock = thread_heap
 				.byte_add(offset_of!(ThreadHeap, thread_lock))
@@ -80,23 +84,20 @@ impl HeapManager {
 
 		const_assert_eq!(size_of::<ThreadHeap>() % align_of::<ThreadHeap>(), 0);
 		let size = (size_of::<ThreadHeap>() + 4095) & !4095;
-		let mut thread_heap = alloc_aligned(
+		let thread_heap = alloc_aligned(
 			NonZero::new(size).unwrap(),
 			NonZero::new(align_of::<ThreadHeap>()).unwrap(),
 			3,
 		)
 		.map(|ptr| ptr.cast::<ThreadHeap>())?;
 
-		let mut start = self.heaps.load(Ordering::Acquire);
-		thread_heap.write(ThreadHeap::new(start));
-
-		while self
-			.heaps
-			.compare_exchange(start, thread_heap.as_ptr(), Ordering::AcqRel, Ordering::Relaxed)
-			.is_err()
-		{
-			start = self.heaps.load(Ordering::Acquire);
-			thread_heap.as_mut().next.store(start, Ordering::Release);
+		let mut start = THREAD_HEAPS.load(Ordering::Acquire);
+		loop {
+			thread_heap.write(ThreadHeap::new(start));
+			match THREAD_HEAPS.compare_exchange(start, thread_heap.as_ptr(), Ordering::Relaxed, Ordering::Acquire) {
+				Ok(_) => break,
+				Err(new_start) => start = new_start,
+			}
 		}
 
 		Some(thread_heap.byte_add(offset_of!(ThreadHeap, heap)).cast::<Heap>())

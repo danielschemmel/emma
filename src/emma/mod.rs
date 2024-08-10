@@ -43,35 +43,44 @@ impl Emma {
 
 	/// Print internals of the [`Emma`] type. This is probably not interesting for consumers of this library.
 	pub const fn print_internals() -> impl core::fmt::Debug {
-		struct F;
+		struct F(fn(&mut core::fmt::Formatter) -> core::fmt::Result);
 
 		impl core::fmt::Debug for F {
 			fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-				writeln!(f, "{} v{}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"))?;
-
-				#[cfg(not(feature = "tls"))]
-				const TLS_ENABLED: &str = "disabled";
-				#[cfg(feature = "tls")]
-				const TLS_ENABLED: &str = "enabled";
-				writeln!(f, "tls {}", TLS_ENABLED)?;
-
-				#[cfg(not(feature = "boundary-checks"))]
-				const BOUNDARY_CHECKS_ENABLED: &str = "disabled";
-				#[cfg(feature = "boundary-checks")]
-				const BOUNDARY_CHECKS_ENABLED: &str = "enabled";
-				writeln!(f, "boundary checks {}", BOUNDARY_CHECKS_ENABLED)?;
-
-				#[cfg(not(debug_assertions))]
-				const DEBUG_ASSERTIONS_ENABLED: &str = "disabled";
-				#[cfg(debug_assertions)]
-				const DEBUG_ASSERTIONS_ENABLED: &str = "enabled";
-				writeln!(f, "debug assertions {}", DEBUG_ASSERTIONS_ENABLED)?;
-
-				Ok(())
+				self.0(f)
 			}
 		}
 
-		F
+		F(Self::print_internals_impl)
+	}
+
+	fn print_internals_impl(f: &mut core::fmt::Formatter) -> core::fmt::Result {
+		writeln!(f, "{} v{}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"))?;
+
+		#[cfg(not(feature = "tls"))]
+		const TLS_ENABLED: &str = "disabled";
+		#[cfg(feature = "tls")]
+		const TLS_ENABLED: &str = "enabled";
+		writeln!(f, "tls {}", TLS_ENABLED)?;
+
+		#[cfg(not(feature = "boundary-checks"))]
+		const BOUNDARY_CHECKS_ENABLED: &str = "disabled";
+		#[cfg(feature = "boundary-checks")]
+		const BOUNDARY_CHECKS_ENABLED: &str = "enabled";
+		writeln!(f, "boundary checks {}", BOUNDARY_CHECKS_ENABLED)?;
+
+		#[cfg(not(debug_assertions))]
+		const DEBUG_ASSERTIONS_ENABLED: &str = "disabled";
+		#[cfg(debug_assertions)]
+		const DEBUG_ASSERTIONS_ENABLED: &str = "enabled";
+		writeln!(f, "debug assertions {}", DEBUG_ASSERTIONS_ENABLED)?;
+		writeln!(f, "")?;
+
+		writeln!(f, "Object Sizes")?;
+		writeln!(f, "Emma: size {} align {}", size_of::<Self>(), align_of::<Self>())?;
+		writeln!(f, "Heap: size {} align {}", size_of::<Heap>(), align_of::<Heap>())?;
+
+		Ok(())
 	}
 }
 

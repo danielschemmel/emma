@@ -216,14 +216,12 @@ impl Page {
 				.byte_add(offset_of!(Page, foreign_free_list))
 				.cast::<AtomicU32>()
 				.as_ref();
+			let mut next = free_list.load(Ordering::Relaxed);
 			loop {
-				let next = free_list.load(Ordering::Relaxed);
 				p.cast::<Option<NonZero<u32>>>().write(NonZero::new(next));
-				if free_list
-					.compare_exchange(next, p_offset.get(), Ordering::Release, Ordering::Relaxed)
-					.is_ok()
-				{
-					break;
+				match free_list.compare_exchange(next, p_offset.get(), Ordering::Release, Ordering::Relaxed) {
+					Ok(_) => break,
+					Err(new_next) => next = new_next,
 				}
 			}
 		}
