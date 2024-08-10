@@ -1,9 +1,6 @@
 # TODO
 Things that we really should do.
 
-## CI
-There should be a CI.
-
 ## Release Unused Physical Pages
 Actually releasing the pages is easy (`MADV_FREE`), but we need to know which pages to release to begin with.
 
@@ -25,6 +22,9 @@ Current understanding (might be wrong):
 	(And also in a multithreaded program if it can be guaranteed that no other thread is currently performing an allocation or deallocation.)
 - When TLS is enabled, forking may not be safe even in a single-threaded program, as that thread may own a heap, and lose ownership of the futex by virtue of its TID changing.
 	This would leave the thread believing it owns a heap, while other threads may believe they can acquire that same heap.
+
+## Support Other OSs
+While not currently the target, it would be nice to support other OSs.
 
 # Ideas
 Interesting ideas that may or may not help.
