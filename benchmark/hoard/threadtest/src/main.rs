@@ -109,7 +109,8 @@ fn main() {
 		}
 
 		// removed the following line from the test, as it really adds nothing except for overhead
-		// println!("Running threadtest for {NTHREADS} threads, {NITERATIONS} iterations, {NOBJECTS} objects, {WORK} work and {OBJ_SIZE} objSize...");
+		// println!("Running threadtest for {NTHREADS} threads, {NITERATIONS} iterations, {NOBJECTS} objects, {WORK} work
+		// and {OBJ_SIZE} objSize...");
 
 		let mut threads: Box<[MaybeUninit<Box<MaybeUninit<thread::JoinHandle<()>>>>]> =
 			Box::new_uninit_slice(NTHREADS as usize);

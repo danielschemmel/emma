@@ -122,7 +122,8 @@ const_assert_eq!(
 	) - powerlaw_bin_from_size((medium_objects::MAXIMUM_OBJECT_ALIGNMENT * 2) as usize)
 );
 
-/// Provides allocation and deallocation capabilities. The actual allocation/deallocation is dispatched, depending of the size of the allocation.
+/// Provides allocation and deallocation capabilities. The actual allocation/deallocation is dispatched, depending of
+/// the size of the allocation.
 ///
 /// - small objects are allocated using [`small_objects`]
 /// - medium objects are allocated using [`medium_objects`]
@@ -130,18 +131,24 @@ const_assert_eq!(
 /// - huge objects are allocated directly using [`crate::mmap`]
 #[derive(Debug)]
 struct Heap {
-	/// An id to identify this heap. The id is guaranteed to not be zero (which means that the heap id zero can be used to indicate no heap).
+	/// An id to identify this heap. The id is guaranteed to not be zero (which means that the heap id zero can be used
+	/// to indicate no heap).
 	#[cfg(feature = "tls")]
 	id: HeapId,
-	/// A singly-linked list of free pages suitable for small objects. The next page is accessed via [`small_objects::Page::next_page`].
+	/// A singly-linked list of free pages suitable for small objects. The next page is accessed via
+	/// [`small_objects::Page::next_page`].
 	small_object_reserve: Option<NonNull<small_objects::Page>>,
-	/// Each element of this array contains a singly-linked list of pages suitable for allocation of small objects of one specific size. The next page is accessed via [`small_objects::Page::next_page`].
+	/// Each element of this array contains a singly-linked list of pages suitable for allocation of small objects of one
+	/// specific size. The next page is accessed via [`small_objects::Page::next_page`].
 	small_object_pages: [Option<NonNull<small_objects::Page>>; NUM_SMALL_OBJECT_BINS],
-	/// A singly-linked list of free pages suitable for medium objects. The next page is accessed via [`medium_objects::Page::next_page`].
+	/// A singly-linked list of free pages suitable for medium objects. The next page is accessed via
+	/// [`medium_objects::Page::next_page`].
 	medium_object_reserve: Option<NonNull<medium_objects::Page>>,
-	/// Each element of this array contains a singly-linked list of pages suitable for allocation of medium objects of one specific size. The next page is accessed via [`medium_objects::Page::next_page`].
+	/// Each element of this array contains a singly-linked list of pages suitable for allocation of medium objects of
+	/// one specific size. The next page is accessed via [`medium_objects::Page::next_page`].
 	medium_object_pages: [Option<NonNull<medium_objects::Page>>; NUM_MEDIUM_OBJECT_BINS],
-	/// Each element of this array contains a singly-linked list of pages suitable for allocation of large objects of one specific size. The next page is accessed via [`large_objects::Page::next_page`].
+	/// Each element of this array contains a singly-linked list of pages suitable for allocation of large objects of one
+	/// specific size. The next page is accessed via [`large_objects::Page::next_page`].
 	large_object_pages: [Option<NonNull<large_objects::Page>>; NUM_LARGE_OBJECT_BINS],
 }
 
