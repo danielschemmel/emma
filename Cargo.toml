@@ -1,6 +1,6 @@
 [package]
 name = "emma"
-version = "0.0.0"
+version = "0.0.1"
 authors = ["Daniel Schemmel <daniel@schemmel.net"]
 repository = "https://github.com/danielschemmel/emma/"
 license = "MIT OR Apache-2.0"
