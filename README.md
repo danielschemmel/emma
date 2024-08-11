@@ -15,9 +15,7 @@ At the moment, `emma` exclusively targets linux on `x86_64`.
 
 # Known Issues
 - It is not clear how `emma` behaves when a process is forked. (Note: [child processes of multi-threaded processes may only access async-signal-safe functions until they call `execve`](https://www.man7.org/linux/man-pages/man2/fork.2.html) anyway.)
-- If a thread is terminated _during memory de-/allocation_ (terminating a thread at any other time in any way does not bother `emma`):
-	- `tls` disabled: The heap may end up permanently locked, deadlocking other threads.
-	- `tls` enabled: The heap may get corrupted as soon as another thread acquires the per-thread-heap from the dead thread.
+- Calling `fork` (or performing an equivalent `clone` call) is safe as long as no thread is currently de-/allocating memory. However, if the forking process ever allocated memory on more than one thread, memory usage will be suboptimal until the new main thread terminates.
 - Embedding multiple `emma`s into one process should work, but unless their symbols are renamed they may share data structures behind the scenes.
 - An `emma` instance does not return all its resources, even if all allocations are returned. This is reasonable for a global allocator, but makes it not as useful as a temporary allocator.
 - `emma` is not async-signal-safe, i.e., you may not de-/allocate memory in a signal handler. (The same probably holds true for your default memory allocator; POSIX does not list `malloc` or `free` as async-signal safe either.)

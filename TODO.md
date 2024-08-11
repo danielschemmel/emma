@@ -12,16 +12,6 @@ A memory allocator always needs more and better tests!
 - Benchmarks should be executed interleaved rather than in large runs of the same allocator.
 - Argument parsing should replace editing the global constants.
 
-## Investigate `fork`
-`emma`s behavior is unclear when the program calls `fork`.
-
-Current understanding (might be wrong):
-- As long as no further allocations/deallocations are made, everything should be fine.
-- When TLS is disabled, forking should be safe in a single-threaded program.
-	(And also in a multithreaded program if it can be guaranteed that no other thread is currently performing an allocation or deallocation.)
-- When TLS is enabled, forking may not be safe even in a single-threaded program, as that thread may own a heap, and lose ownership of the futex by virtue of its TID changing.
-	This would leave the thread believing it owns a heap, while other threads may believe they can acquire that same heap.
-
 ## Support Other OSs
 While not currently the target, it would be nice to support other OSs.
 
