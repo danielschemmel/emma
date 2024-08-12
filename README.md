@@ -22,7 +22,6 @@ Emma seems not far behind (other) state-of-the-art allocators.
 At the moment, emma exclusively targets linux on `x86_64`.
 
 # Known Issues
-- It is not clear how emma behaves when a process is forked. (Note: [child processes of multi-threaded processes may only access async-signal-safe functions until they call `execve`](https://www.man7.org/linux/man-pages/man2/fork.2.html) anyway.)
 - Calling `fork` (or performing an equivalent `clone` call) is safe as long as no thread is currently de-/allocating memory. However, if the forking process ever allocated memory on more than one thread, memory usage will be suboptimal until the new main thread terminates.
 - Embedding multiple emma instancess into one process should work, but unless their symbols are renamed they may share data structures behind the scenes.
 - An emma instance does not return all its resources, even if all allocations are returned. This is reasonable for a global allocator, but makes it not as useful as a temporary allocator.
