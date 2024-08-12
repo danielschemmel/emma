@@ -28,8 +28,9 @@ ALLOCATORS = [
 #	"mimalloc",
 ]
 
-WARMUP = 2
-RUNS = 50
+WARMUP = 1
+CHUNK_SIZE = 5
+RUNS = 20
 
 DIR = Path(__file__).absolute().parent
 BIN_DIR = DIR / "bin"
@@ -51,7 +52,7 @@ def measure(target, args):
 
 	return (float(stdout_match.group("secs")) * 1000, float(time_match.group("kbs")) / 1024)
 
-def stats(sample_data, confidence_level=0.99):
+def stats(sample_data, confidence_level=0.997):
 	sample_mean = numpy.mean(sample_data)
 
 	if len(sample_data) < 30:
@@ -86,24 +87,21 @@ def compile_bench(benchmark, allocator):
 
 def run_bench(benchmark, args):
 	benchmark = Path(benchmark)
-	times = []
-	rsss = []
-	for allocator in ALLOCATORS:
-		print(f"{benchmark}/{allocator}")
+	measurements = [[] for _ in ALLOCATORS]
+	while len(measurements[0]) < RUNS:
+		for i in range(len(ALLOCATORS)):
+			allocator = ALLOCATORS[i]
+			chunk = []
+			for c in range(WARMUP + min(CHUNK_SIZE, RUNS - len(measurements[i]))):
+				print(f"{benchmark} {len(measurements[i])}+{c + 1} {allocator}... ", sep="", end="", flush=True)
+				target = BIN_DIR / benchmark / allocator / "release" / benchmark.name
+				chunk.append(measure(target, args))
+				print("OK")
 
-		target = BIN_DIR / benchmark / allocator / "release" / benchmark.name
-		measurements = []
-		for i in range(RUNS + WARMUP):
-			print(i + 1, "...", sep="", end="", flush=True)
-			measurements.append(measure(target, args))
-			print(" Done")
-		measurements = measurements[WARMUP:]
-		(time, rss) = list(zip(*measurements))
-		times.append((time, ) + stats(time))
-		rsss.append((rss, ) + stats(rss))
+			measurements[i]  += chunk[WARMUP:]
 
-		print(f"{benchmark}/{allocator}: {round(times[-1][1])}ms {round(rsss[-1][1])}kb")
-		print()
+	print()
+	(times, rsss) = list(zip(*[[(series, ) + stats(series) for series in list(zip(*m))] for m in measurements]))
 	return (times, rsss)
 
 for (benchmark, _args) in BENCHMARKS:
