@@ -1,4 +1,4 @@
-//! Emma is an EMbeddable Memory Allocator. It is `no_std` and "no-libc"" safe, and has zero binary dependencies.
+//! Emma is an EMbeddable Memory Allocator. It is `no_std` and "no-libc" safe, and has zero binary dependencies.
 //!
 //! Use emma as you would any other allocator:
 //!
