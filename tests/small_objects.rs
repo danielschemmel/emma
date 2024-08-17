@@ -16,6 +16,7 @@ unsafe fn check(objs: &Vec<(NonNull<u8>, Layout)>) {
 		let l = w[0];
 		let r = w[1];
 		assert!(l.0 <= r.0, "sorted");
+		assert_eq!(l.0, r.0, "The same object was allocated multiple times!");
 
 		assert!(l.0.byte_add(l.1.size()) <= r.0);
 	}
