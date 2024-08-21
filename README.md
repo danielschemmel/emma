@@ -6,7 +6,7 @@ Emma is an EMbeddable Memory Allocator. This means:
 - No direct or indirect binary dependencies, including on `libc`: emma uses raw syscalls instead. Note that your rustc target may depend on `libc` - use the [`x86_64-unknown-linux-unknown` target](https://doc.rust-lang.org/rustc/platform-support/x86_64-unknown-linux-none.html), with which emma is compatible, if you want to avoid this.
 - No usage of any shared resources: Instead of `brk`/`sbrk` to modify the _shared_ data segment, emma only ever maps its own segments using `mmap`.
 
-Multiple emma instances can coexist with other allocators the same process.
+Multiple emma instances can coexist with other allocators in the same process.
 If its symbols are renamed, emma can even coexist with other copies and/or versions of itself without interference!
 
 ## Usage
