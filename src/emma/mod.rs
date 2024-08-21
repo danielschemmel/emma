@@ -85,7 +85,7 @@ impl Emma {
 	}
 }
 
-/// The per-thread heap. Can be accessed w/o without locking, but may not be sent between threads.
+/// The per-thread heap. Can be accessed without locking, but may not be sent between threads.
 #[cfg(feature = "tls")]
 #[thread_local]
 static mut THREAD_HEAP: Option<NonNull<Heap>> = None;
