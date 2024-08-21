@@ -16,7 +16,7 @@ unsafe fn check(objs: &Vec<(NonNull<u8>, Layout)>) {
 		let l = w[0];
 		let r = w[1];
 		assert!(l.0 <= r.0, "sorted");
-		assert_eq!(l.0, r.0, "The same object was allocated multiple times!");
+		assert_ne!(l.0, r.0, "The same object was allocated multiple times!");
 
 		assert!(l.0.byte_add(l.1.size()) <= r.0);
 	}
@@ -35,12 +35,19 @@ unsafe fn replace_nth(objs: &mut Vec<(NonNull<u8>, Layout)>, n: usize, layout: L
 	for (i, o) in objs.iter_mut().enumerate() {
 		if i % n == 0 {
 			EMMA.dealloc(o.0.as_ptr(), o.1);
-			*o = (NonNull::new(EMMA.alloc(layout)).unwrap(), layout);
+			let p = NonNull::new(EMMA.alloc(layout)).unwrap();
+			let mut i = 0;
+			while i + size_of::<usize>() < layout.size() {
+				p.cast().write(p.as_ptr() as usize);
+				i += size_of::<usize>();
+			}
+			*o = (p, layout);
 		}
 	}
 	check(&objs);
 }
 
+#[test]
 fn main() {
 	unsafe {
 		const COUNT: usize = 100000;
