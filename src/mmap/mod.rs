@@ -7,52 +7,60 @@ use core::ptr::NonNull;
 
 pub use self::syscalls::*;
 
+#[inline]
 unsafe fn move_mapping_down(
-	old_mapping: NonNull<c_void>,
+	old_addr: NonNull<c_void>,
 	size: NonZero<usize>,
-	move_forwards: NonZero<usize>,
+	amount: NonZero<usize>,
 	prot: MMapProt,
 	flags: MMapFlags,
 ) -> Option<NonNull<c_void>> {
-	let target_addr = old_mapping.byte_sub(move_forwards.get());
+	let target_addr = old_addr.byte_sub(amount.get());
 	let filler = mmap(
 		Some(target_addr),
-		move_forwards,
+		amount,
 		prot,
 		flags | MMapFlags::FIXED_NOREPLACE,
 		None,
 		0,
 	)
 	.ok()?;
-	assert_eq!(filler, target_addr);
+	assert_eq!(
+		filler, target_addr,
+		"Emma is not compatible with linux kernels that do not recognize MAP_FIXED_NOREPLACE (pre 4.17)."
+	);
 
-	munmap(target_addr.byte_add(size.get()), move_forwards).unwrap();
+	munmap(target_addr.byte_add(size.get()), amount).unwrap();
 
 	Some(target_addr)
 }
 
+#[inline]
 unsafe fn move_mapping_up(
-	old_mapping: NonNull<c_void>,
+	old_addr: NonNull<c_void>,
 	size: NonZero<usize>,
-	move_backwards: NonZero<usize>,
+	amount: NonZero<usize>,
 	prot: MMapProt,
 	flags: MMapFlags,
 ) -> Option<NonNull<c_void>> {
-	let target_addr = old_mapping.byte_add(size.get());
+	let target_addr = old_addr.byte_add(size.get());
 	let filler = mmap(
 		Some(target_addr),
-		move_backwards,
+		amount,
 		prot,
 		flags | MMapFlags::FIXED_NOREPLACE,
 		None,
 		0,
 	)
 	.ok()?;
-	assert_eq!(filler, target_addr);
+	assert_eq!(
+		filler, target_addr,
+		"Emma is not compatible with linux kernels that do not recognize MAP_FIXED_NOREPLACE (pre 4.17)."
+	);
 
-	munmap(old_mapping, move_backwards).unwrap();
+	munmap(old_addr, amount).unwrap();
 
-	Some(old_mapping.byte_add(move_backwards.get()))
+	Some(old_addr.byte_add(amount.get()))
 }
 
 unsafe fn mmap_aligned_rec(
@@ -72,10 +80,12 @@ unsafe fn mmap_aligned_rec(
 			prot,
 			flags,
 		) {
+			debug_assert_eq!(mapping.as_ptr() as usize & (alignment.get() - 1), 0);
 			return Some(mapping);
 		}
 		if mapping.as_ptr() as usize > misalignment.get() {
 			if let Some(mapping) = move_mapping_down(mapping, size, misalignment, prot, flags) {
+				debug_assert_eq!(mapping.as_ptr() as usize & (alignment.get() - 1), 0);
 				return Some(mapping);
 			}
 		}
@@ -97,8 +107,7 @@ unsafe fn mmap_aligned_rec(
 /// Tries to allocate suitably aligned storage from the OS. As this may fail initially, the function will retry up to
 /// `recursive_retries` times.
 ///
-/// This function allocates virtual memory, not physical memory. However, it also notifies the OS, that the first page
-/// will be needed soon.
+/// This function allocates virtual memory, not physical memory.
 pub unsafe fn alloc_aligned(
 	size: NonZero<usize>,
 	alignment: NonZero<usize>,
@@ -108,7 +117,6 @@ pub unsafe fn alloc_aligned(
 	debug_assert_eq!(size.get() & (alignment.get() - 1), 0);
 
 	if let Some(mapping) = mmap_aligned_rec(size, alignment, recursive_retries) {
-		madvise(mapping, 4096, MAdviseAdvice::WILLNEED).ok();
 		Some(mapping)
 	} else {
 		None
@@ -118,9 +126,12 @@ pub unsafe fn alloc_aligned(
 /// Tries to allocate storage at the exact location provided.
 pub unsafe fn alloc_at(address: NonNull<c_void>, size: NonZero<usize>) -> Option<NonNull<c_void>> {
 	let prot = MMapProt::READ | MMapProt::WRITE;
-	let flags = MMapFlags::PRIVATE | MMapFlags::ANONYMOUS | MMapFlags::NORESERVE;
+	let flags = MMapFlags::PRIVATE | MMapFlags::ANONYMOUS | MMapFlags::NORESERVE | MMapFlags::FIXED_NOREPLACE;
 	let ret = mmap(Some(address), size, prot, flags, None, 0).ok()?;
-	debug_assert_eq!(ret, address);
+	assert_eq!(
+		ret, address,
+		"Emma is not compatible with linux kernels that do not recognize MAP_FIXED_NOREPLACE (pre 4.17)."
+	);
 	Some(ret)
 }
 
