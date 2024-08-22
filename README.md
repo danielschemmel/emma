@@ -1,5 +1,12 @@
 # Emma
 
+![docs.rs](https://img.shields.io/docsrs/emma)
+![docs.rs (with version)](https://img.shields.io/docsrs/emma/0.0.1)
+![Crates.io Version](https://img.shields.io/crates/v/emma)
+![Crates.io License](https://img.shields.io/crates/l/emma)
+![GitHub branch status](https://img.shields.io/github/checks-status/danielschemmel/emma/main)
+![GitHub branch check runs](https://img.shields.io/github/check-runs/danielschemmel/emma/main)
+
 Emma is an EMbeddable Memory Allocator. This means:
 
 - Fully `no_std` compatible.
