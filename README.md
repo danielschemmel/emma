@@ -1,5 +1,6 @@
 # Emma
 
+![docs.rs](https://img.shields.io/docsrs/emma)
 ![docs.rs (with version)](https://img.shields.io/docsrs/emma/0.0.1)
 ![Crates.io Version](https://img.shields.io/crates/v/emma)
 ![Crates.io License](https://img.shields.io/crates/l/emma)
