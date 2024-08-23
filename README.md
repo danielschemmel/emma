@@ -22,8 +22,12 @@ Use emma as you would any other allocator:
 static EMMA: emma::DefaultEmma = emma::DefaultEmma::new();
 ```
 
+## Cargo Features
+- `tls` enabling thread-local-storage requires a nightly compiler. Enabling `tls` massively increases performance.
+- `boundary-checks` enables assertions at the library boundary. These assertions cost a small amount of performance.
+
 ## Performance
-Emma seems not far behind (other) state-of-the-art allocators.
+Emma seems not far behind (other) state-of-the-art allocators, when the `tls` feature is enabled.
 
 ## Target Architecture
 At the moment, emma exclusively targets linux on `x86_64`.
@@ -31,10 +35,6 @@ At the moment, emma exclusively targets linux on `x86_64`.
 ## `fork`
 Calling `fork` (or performing an equivalent `clone` call) is safe as long as no thread is currently de-/allocating memory.
 If a thread was de-/allocating memory when `fork` was called, no further de-/allocation of memory may take place until such a time as the process calls `execve`.
-
-## Cargo Features
-- `tls` enabling thread-local-storage requires a nightly compiler. Enabling `tls` massively increases performance.
-- `boundary-checks` enables assertions at the library boundary. These assertions cost a small amount of performance.
 
 ## License
 Licensed under either of:
