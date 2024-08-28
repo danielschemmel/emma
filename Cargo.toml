@@ -21,6 +21,12 @@ lock_api = "0.4.12"
 static_assertions = "1.1.0"
 syscalls = { version = "0.6.18", default-features = false }
 
+[dev-dependencies]
+rand = "0.8.5"
+rand_chacha = "0.3.1"
+rand_distr = "0.4.3"
+rangemap = "1.5.1"
+
 [features]
 default = []
 tls = []
