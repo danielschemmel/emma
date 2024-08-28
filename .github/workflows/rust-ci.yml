@@ -22,7 +22,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest]
-        toolchain: [stable, beta, nightly]
+        toolchain: [nightly]
         features: [""]
 
     steps:
@@ -32,11 +32,11 @@ jobs:
           toolchain: ${{ matrix.toolchain }}
           components: clippy
       - name: Run clippy
-        run: cargo clippy ${{ matrix.feature_bug }} --features=${{ matrix.feature_subcommands }} --all-targets
+        run: cargo clippy --features=${{ matrix.features }} --all-targets
       - name: Build
-        run: cargo build ${{ matrix.feature_bug }} --features=${{ matrix.feature_subcommands }} --verbose
+        run: cargo build --features=${{ matrix.features }} --verbose
       - name: Run tests
-        run: cargo test ${{ matrix.feature_bug }} --features=${{ matrix.feature_subcommands }} --verbose
+        run: cargo test --features=${{ matrix.features }} --verbose
 
   test-tls:
     runs-on: ${{ matrix.os }}
@@ -53,8 +53,8 @@ jobs:
           toolchain: ${{ matrix.toolchain }}
           components: clippy
       - name: Run clippy
-        run: cargo clippy ${{ matrix.feature_bug }} --features=${{ matrix.feature_subcommands }} --all-targets
+        run: cargo clippy --features=${{ matrix.features }} --all-targets
       - name: Build
-        run: cargo build ${{ matrix.feature_bug }} --features=${{ matrix.feature_subcommands }} --verbose
+        run: cargo build --features=${{ matrix.features }} --verbose
       - name: Run tests
-        run: cargo test ${{ matrix.feature_bug }} --features=${{ matrix.feature_subcommands }} --verbose
+        run: cargo test --features=${{ matrix.features }} --verbose
