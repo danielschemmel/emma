@@ -1,15 +1,16 @@
 #![feature(btree_cursors)]
 
-use rand::distributions::Uniform;
 use std::alloc::Layout;
 use std::collections::BTreeMap;
 use std::ptr::NonNull;
 use std::sync::Mutex;
 
 use emma::DefaultEmma;
+use rand::distributions::Uniform;
 
 extern crate alloc;
 use alloc::alloc::GlobalAlloc;
+
 use rand::prelude::Distribution;
 use rand::{Rng, SeedableRng};
 use rand_distr::Exp;
@@ -96,9 +97,7 @@ unsafe impl<A: GlobalAlloc> GlobalAlloc for CheckedAllocator<A> {
 fn main() {
 	const ITERATIONS: u64 = 100_000;
 
-	let mut rng = rand_chacha::ChaChaRng::seed_from_u64(
-		b'e' as u64 * 256 * 256 * 256 + b'm' as u64 * 256 * 256 + b'm' as u64 * 256 + b'a' as u64,
-	);
+	let mut rng = rand_chacha::ChaChaRng::seed_from_u64(u64::from_be_bytes(*b"emmaEMMA"));
 
 	let operation_dist = Uniform::new(0, 100);
 	let size_dist = Exp::<f64>::new(0.00075).unwrap();
