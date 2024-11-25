@@ -26,4 +26,4 @@ Huge pages require less room in the address translation buffers, which reduces b
 
 ### Contra
 Collapsing pages may require copying the whole data (takes time).
-Memory overhead may increase, as releasing 4k pages may become harder or even unfeasable.
+Memory overhead may increase, as releasing 4k pages may become harder or even unfeasible.
