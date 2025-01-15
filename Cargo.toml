@@ -15,8 +15,8 @@ codegen-units = 1
 lto = true
 
 [dependencies]
-bitflags = "2.6.0"
-linux-raw-sys = { version = "0.6.4", default-features = false, features = ["no_std", "general"] }
+bitflags = "2.8.0"
+linux-raw-sys = { version = "0.7.0", default-features = false, features = ["no_std", "general"] }
 lock_api = "0.4.12"
 static_assertions = "1.1.0"
 syscalls = { version = "0.6.18", default-features = false }
