@@ -279,7 +279,7 @@ const_assert_eq!(powerlaw_bins_round_up_size(const_non_zero_usize(4080)).get(), 
 
 impl Heap {
 	unsafe fn alloc(&mut self, size: NonZero<usize>, alignment: NonZero<usize>) -> *mut u8 {
-		let bin = (size.get() + 7) / 8;
+		let bin = size.get().div_ceil(8);
 		debug_assert!(bin > 0);
 		if bin <= self.small_object_pages.len() {
 			unsafe {
@@ -358,7 +358,7 @@ impl Heap {
 		_alignment: NonZero<usize>,
 	) {
 		unsafe {
-			let bin = (size.get() + 7) / 8;
+			let bin = size.get().div_ceil(8);
 			debug_assert!(bin > 0);
 			if bin <= NUM_SMALL_OBJECT_BINS {
 				debug_assert!(!ptr.is_null());

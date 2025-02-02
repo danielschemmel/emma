@@ -122,11 +122,7 @@ pub unsafe fn alloc_aligned(
 	debug_assert!(alignment.is_power_of_two());
 	debug_assert_eq!(size.get() & (alignment.get() - 1), 0);
 
-	if let Some(mapping) = unsafe { mmap_aligned_rec(size, alignment, recursive_retries) } {
-		Some(mapping)
-	} else {
-		None
-	}
+	unsafe { mmap_aligned_rec(size, alignment, recursive_retries) }
 }
 
 /// Tries to allocate storage at the exact location provided.
