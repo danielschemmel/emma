@@ -29,12 +29,12 @@ impl Arena {
 	/// Makes a pointer to the arena from any pointer to a location inside the arena.
 	#[inline]
 	unsafe fn from_inner_ptr(p: NonNull<u8>) -> NonNull<Arena> {
-		NonNull::new_unchecked(((p.as_ptr() as usize) & !(ARENA_SIZE as usize - 1)) as *mut Arena)
+		unsafe { NonNull::new_unchecked(((p.as_ptr() as usize) & !(ARENA_SIZE as usize - 1)) as *mut Arena) }
 	}
 
 	#[inline]
 	unsafe fn object_offset(p: NonNull<u8>) -> NonZero<u32> {
-		NonZero::new_unchecked((p.as_ptr() as u32) % ARENA_SIZE)
+		unsafe { NonZero::new_unchecked((p.as_ptr() as u32) % ARENA_SIZE) }
 	}
 }
 
@@ -50,25 +50,27 @@ pub struct Page {
 impl Page {
 	#[inline]
 	pub unsafe fn from_new_arena(#[cfg(feature = "tls")] owner: HeapId) -> Option<NonNull<Page>> {
-		let region = alloc_aligned(
-			NonZero::new(ARENA_SIZE as usize).unwrap(),
-			NonZero::new(ARENA_SIZE as usize).unwrap(),
-			3,
-		)?;
+		unsafe {
+			let region = alloc_aligned(
+				NonZero::new(ARENA_SIZE as usize).unwrap(),
+				NonZero::new(ARENA_SIZE as usize).unwrap(),
+				3,
+			)?;
 
-		region.cast().write(Arena {
-			#[cfg(feature = "tls")]
-			owner: AtomicHeapId::new(owner),
-			page: Page {
-				next_page: None,
-				free_list: None,
+			region.cast().write(Arena {
 				#[cfg(feature = "tls")]
-				foreign_free_list: AtomicU32::new(0),
-				bytes_in_reserve: ARENA_SIZE - size_of::<Arena>() as u32,
-			},
-		});
+				owner: AtomicHeapId::new(owner),
+				page: Page {
+					next_page: None,
+					free_list: None,
+					#[cfg(feature = "tls")]
+					foreign_free_list: AtomicU32::new(0),
+					bytes_in_reserve: ARENA_SIZE - size_of::<Arena>() as u32,
+				},
+			});
 
-		Some(region.byte_add(offset_of!(Arena, page)).cast())
+			Some(region.byte_add(offset_of!(Arena, page)).cast())
+		}
 	}
 
 	#[inline]
@@ -116,9 +118,11 @@ impl Page {
 	#[cfg(not(feature = "tls"))]
 	#[inline]
 	pub unsafe fn dealloc(p: NonNull<u8>) {
-		let page = &mut unsafe { Arena::from_inner_ptr(p).as_mut() }.page;
-		p.cast::<Option<NonZero<u32>>>().write(page.free_list);
-		page.free_list = Some(Arena::object_offset(p));
+		unsafe {
+			let page = &mut Arena::from_inner_ptr(p).as_mut().page;
+			p.cast::<Option<NonZero<u32>>>().write(page.free_list);
+			page.free_list = Some(Arena::object_offset(p));
+		}
 	}
 
 	#[cfg(feature = "tls")]
@@ -157,38 +161,40 @@ impl Page {
 
 #[inline]
 pub unsafe fn alloc(bin: &mut Option<NonNull<Page>>, object_size: u32, #[cfg(feature = "tls")] id: HeapId) -> *mut u8 {
-	{
-		let mut pp: *mut Option<NonNull<Page>> = bin;
-		let mut p = *bin;
-		while let Some(mut q) = p {
-			let page = q.as_mut();
+	unsafe {
+		{
+			let mut pp: *mut Option<NonNull<Page>> = bin;
+			let mut p = *bin;
+			while let Some(mut q) = p {
+				let page = q.as_mut();
 
-			if let Some(ret) = page.alloc(object_size) {
-				if p != *bin {
-					*pp.as_mut().unwrap_unchecked() = page.next_page;
-					page.next_page = *bin;
-					*bin = p;
+				if let Some(ret) = page.alloc(object_size) {
+					if p != *bin {
+						*pp.as_mut().unwrap_unchecked() = page.next_page;
+						page.next_page = *bin;
+						*bin = p;
+					}
+					return ret.as_ptr();
 				}
-				return ret.as_ptr();
+				pp = &mut page.next_page;
+				p = page.next_page;
 			}
-			pp = &mut page.next_page;
-			p = page.next_page;
 		}
-	}
 
-	#[cfg(not(feature = "tls"))]
-	let page_from_new_arena = Page::from_new_arena();
-	#[cfg(feature = "tls")]
-	let page_from_new_arena = Page::from_new_arena(id);
-	if let Some(mut page) = page_from_new_arena {
-		page.as_mut().next_page = *bin;
-		*bin = Some(page);
+		#[cfg(not(feature = "tls"))]
+		let page_from_new_arena = Page::from_new_arena();
+		#[cfg(feature = "tls")]
+		let page_from_new_arena = Page::from_new_arena(id);
+		if let Some(mut page) = page_from_new_arena {
+			page.as_mut().next_page = *bin;
+			*bin = Some(page);
 
-		let ret = page.as_mut().alloc(object_size);
-		debug_assert!(ret.is_some());
-		unsafe { ret.unwrap_unchecked() }.as_ptr()
-	} else {
-		// OOM?
-		ptr::null_mut()
+			let ret = page.as_mut().alloc(object_size);
+			debug_assert!(ret.is_some());
+			ret.unwrap_unchecked().as_ptr()
+		} else {
+			// OOM?
+			ptr::null_mut()
+		}
 	}
 }

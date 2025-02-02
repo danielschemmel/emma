@@ -6,7 +6,7 @@ mod mmap;
 mod mremap;
 mod munmap;
 
-pub use madvise::{madvise, MAdviseAdvice};
-pub use mmap::{mmap, MMapFlags, MMapProt};
+pub use madvise::{MAdviseAdvice, madvise};
+pub use mmap::{MMapFlags, MMapProt, mmap};
 pub use mremap::mremap_resize;
 pub use munmap::munmap;

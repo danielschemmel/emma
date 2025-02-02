@@ -18,13 +18,13 @@ unsafe fn check(objs: &Vec<(NonNull<u8>, Layout)>) {
 		assert!(l.0 <= r.0, "sorted");
 		assert_ne!(l.0, r.0, "The same object was allocated multiple times!");
 
-		assert!(l.0.byte_add(l.1.size()) <= r.0);
+		assert!(unsafe { l.0.byte_add(l.1.size()) } <= r.0);
 	}
 
 	for &(p, layout) in sorted.iter() {
 		let mut i = 0;
 		while i + size_of::<usize>() < layout.size() {
-			let check = p.cast::<usize>().read();
+			let check = unsafe { p.cast::<usize>().read() };
 			assert_eq!(check, p.as_ptr() as usize);
 			i += size_of::<usize>();
 		}
@@ -34,17 +34,17 @@ unsafe fn check(objs: &Vec<(NonNull<u8>, Layout)>) {
 unsafe fn replace_nth(objs: &mut Vec<(NonNull<u8>, Layout)>, n: usize, layout: Layout) {
 	for (i, o) in objs.iter_mut().enumerate() {
 		if i % n == 0 {
-			EMMA.dealloc(o.0.as_ptr(), o.1);
-			let p = NonNull::new(EMMA.alloc(layout)).unwrap();
+			unsafe { EMMA.dealloc(o.0.as_ptr(), o.1) };
+			let p = NonNull::new(unsafe { EMMA.alloc(layout) }).unwrap();
 			let mut i = 0;
 			while i + size_of::<usize>() < layout.size() {
-				p.cast().write(p.as_ptr() as usize);
+				unsafe { p.cast().write(p.as_ptr() as usize) };
 				i += size_of::<usize>();
 			}
 			*o = (p, layout);
 		}
 	}
-	check(&objs);
+	unsafe { check(&objs) };
 }
 
 #[test]

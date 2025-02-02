@@ -2,7 +2,7 @@ use core::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
 use lock_api::{GuardSend, RawMutex};
 
-use super::syscalls::{futex_wait, futex_wake, FutexFlags};
+use super::syscalls::{FutexFlags, futex_wait, futex_wake};
 
 #[derive(Debug)]
 pub struct RawFutex {

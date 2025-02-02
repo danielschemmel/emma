@@ -1,4 +1,4 @@
-use core::mem::{offset_of, MaybeUninit};
+use core::mem::{MaybeUninit, offset_of};
 use core::num::NonZero;
 use core::ptr::{self, NonNull};
 
@@ -38,12 +38,12 @@ impl Arena {
 	/// Makes a pointer to the arena from any pointer to a location inside the arena.
 	#[inline]
 	unsafe fn from_inner_ptr(p: NonNull<u8>) -> NonNull<Arena> {
-		NonNull::new_unchecked(((p.as_ptr() as usize) & !(ARENA_SIZE as usize - 1)) as *mut Arena)
+		unsafe { NonNull::new_unchecked(((p.as_ptr() as usize) & !(ARENA_SIZE as usize - 1)) as *mut Arena) }
 	}
 
 	#[inline]
 	unsafe fn object_offset(p: NonNull<u8>) -> NonZero<u32> {
-		NonZero::new_unchecked((p.as_ptr() as u32) % ARENA_SIZE)
+		unsafe { NonZero::new_unchecked((p.as_ptr() as u32) % ARENA_SIZE) }
 	}
 }
 
@@ -66,14 +66,16 @@ impl Page {
 	pub unsafe fn from_new_arena(
 		#[cfg(feature = "tls")] owner: HeapId,
 	) -> Option<(NonNull<Page>, NonNull<Page>, NonNull<Page>)> {
-		let region = alloc_aligned(
-			NonZero::new(ARENA_SIZE as usize).unwrap(),
-			NonZero::new(ARENA_SIZE as usize).unwrap(),
-			3,
-		)?;
+		let region = unsafe {
+			alloc_aligned(
+				NonZero::new(ARENA_SIZE as usize).unwrap(),
+				NonZero::new(ARENA_SIZE as usize).unwrap(),
+				3,
+			)?
+		};
 
-		let pages_p = region.byte_add(offset_of!(Arena, pages)).cast::<Page>();
-		let mut pages: [MaybeUninit<Page>; PAGES_PER_ARENA as usize] = MaybeUninit::uninit().assume_init();
+		let pages_p = unsafe { region.byte_add(offset_of!(Arena, pages)).cast::<Page>() };
+		let mut pages: [MaybeUninit<Page>; PAGES_PER_ARENA as usize] = unsafe { MaybeUninit::uninit().assume_init() };
 		pages[0].write(Page {
 			next_page: None,
 			page_number: 0,
@@ -84,7 +86,7 @@ impl Page {
 		});
 		for i in 1..pages.len() - 1 {
 			pages[i].write(Page {
-				next_page: Some(pages_p.add(i + 1)),
+				next_page: Some(unsafe { pages_p.add(i + 1) }),
 				page_number: i as u32,
 				free_list: None,
 				#[cfg(feature = "tls")]
@@ -101,15 +103,17 @@ impl Page {
 			bytes_in_reserve: PAGE_SIZE,
 		});
 
-		region.cast().write(Arena {
-			#[cfg(feature = "tls")]
-			owner: AtomicHeapId::new(owner),
-			pages: core::mem::transmute::<[MaybeUninit<Page>; PAGES_PER_ARENA as usize], [Page; PAGES_PER_ARENA as usize]>(
-				pages,
-			),
-		});
+		unsafe {
+			region.cast().write(Arena {
+				#[cfg(feature = "tls")]
+				owner: AtomicHeapId::new(owner),
+				pages: core::mem::transmute::<[MaybeUninit<Page>; PAGES_PER_ARENA as usize], [Page; PAGES_PER_ARENA as usize]>(
+					pages,
+				),
+			})
+		};
 
-		Some((pages_p, pages_p.add(1), pages_p.add(PAGES_PER_ARENA as usize - 1)))
+		unsafe { Some((pages_p, pages_p.add(1), pages_p.add(PAGES_PER_ARENA as usize - 1))) }
 	}
 
 	#[inline]
@@ -119,11 +123,13 @@ impl Page {
 
 	#[inline]
 	unsafe fn is_on_page(&mut self, p: *mut u8) -> bool {
-		let start = Arena::from_inner_ptr(NonNull::new(self).unwrap().cast())
-			.cast::<u8>()
-			.byte_add(self.page_number as usize * PAGE_SIZE as usize);
-		let end = start.byte_add(PAGE_SIZE as usize);
-		start.as_ptr() <= p && p < end.as_ptr()
+		unsafe {
+			let start = Arena::from_inner_ptr(NonNull::new(self).unwrap().cast())
+				.cast::<u8>()
+				.byte_add(self.page_number as usize * PAGE_SIZE as usize);
+			let end = start.byte_add(PAGE_SIZE as usize);
+			start.as_ptr() <= p && p < end.as_ptr()
+		}
 	}
 
 	#[inline]
@@ -189,9 +195,11 @@ impl Page {
 	#[cfg(not(feature = "tls"))]
 	#[inline]
 	pub unsafe fn dealloc(p: NonNull<u8>) {
-		let page = &mut unsafe { Arena::from_inner_ptr(p).as_mut() }.pages[Page::page_id(p.as_ptr())];
-		p.cast::<Option<NonZero<u32>>>().write(page.free_list);
-		page.free_list = Some(Arena::object_offset(p));
+		unsafe {
+			let page = &mut Arena::from_inner_ptr(p).as_mut().pages[Page::page_id(p.as_ptr())];
+			p.cast::<Option<NonZero<u32>>>().write(page.free_list);
+			page.free_list = Some(Arena::object_offset(p));
+		}
 	}
 
 	#[cfg(feature = "tls")]
@@ -238,54 +246,56 @@ pub unsafe fn alloc(
 	object_size: u32,
 	#[cfg(feature = "tls")] id: HeapId,
 ) -> *mut u8 {
-	{
-		let mut pp: *mut Option<NonNull<Page>> = bin;
-		let mut p = *bin;
-		while let Some(mut q) = p {
-			let page = q.as_mut();
+	unsafe {
+		{
+			let mut pp: *mut Option<NonNull<Page>> = bin;
+			let mut p = *bin;
+			while let Some(mut q) = p {
+				let page = q.as_mut();
 
-			if let Some(ret) = page.alloc(object_size) {
-				if p != *bin {
-					*pp.as_mut().unwrap_unchecked() = page.next_page;
-					page.next_page = *bin;
-					*bin = p;
+				if let Some(ret) = page.alloc(object_size) {
+					if p != *bin {
+						*pp.as_mut().unwrap_unchecked() = page.next_page;
+						page.next_page = *bin;
+						*bin = p;
+					}
+					return ret.as_ptr();
 				}
-				return ret.as_ptr();
+				pp = &mut page.next_page;
+				p = page.next_page;
 			}
-			pp = &mut page.next_page;
-			p = page.next_page;
 		}
-	}
 
-	if let Some(mut p) = *reserve_pages {
-		let page = p.as_mut();
+		if let Some(mut p) = *reserve_pages {
+			let page = p.as_mut();
 
-		*reserve_pages = page.next_page;
-		page.next_page = *bin;
-		*bin = Some(p);
+			*reserve_pages = page.next_page;
+			page.next_page = *bin;
+			*bin = Some(p);
 
-		let ret = page.alloc(object_size);
-		debug_assert!(ret.is_some());
-		return unsafe { ret.unwrap_unchecked() }.as_ptr();
-	}
+			let ret = page.alloc(object_size);
+			debug_assert!(ret.is_some());
+			return ret.unwrap_unchecked().as_ptr();
+		}
 
-	#[cfg(not(feature = "tls"))]
-	let pages_from_new_arena = Page::from_new_arena();
-	#[cfg(feature = "tls")]
-	let pages_from_new_arena = Page::from_new_arena(id);
-	if let Some((mut page, first_additional_page, mut last_additional_page)) = pages_from_new_arena {
-		debug_assert_eq!(last_additional_page.as_ref().next_page, None);
-		last_additional_page.as_mut().next_page = *reserve_pages;
-		*reserve_pages = Some(first_additional_page);
+		#[cfg(not(feature = "tls"))]
+		let pages_from_new_arena = Page::from_new_arena();
+		#[cfg(feature = "tls")]
+		let pages_from_new_arena = Page::from_new_arena(id);
+		if let Some((mut page, first_additional_page, mut last_additional_page)) = pages_from_new_arena {
+			debug_assert_eq!(last_additional_page.as_ref().next_page, None);
+			last_additional_page.as_mut().next_page = *reserve_pages;
+			*reserve_pages = Some(first_additional_page);
 
-		page.as_mut().next_page = *bin;
-		*bin = Some(page);
+			page.as_mut().next_page = *bin;
+			*bin = Some(page);
 
-		let ret = page.as_mut().alloc(object_size);
-		debug_assert!(ret.is_some());
-		unsafe { ret.unwrap_unchecked() }.as_ptr()
-	} else {
-		// OOM?
-		ptr::null_mut()
+			let ret = page.as_mut().alloc(object_size);
+			debug_assert!(ret.is_some());
+			ret.unwrap_unchecked().as_ptr()
+		} else {
+			// OOM?
+			ptr::null_mut()
+		}
 	}
 }

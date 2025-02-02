@@ -62,23 +62,23 @@ impl<A: GlobalAlloc> CheckedAllocator<A> {
 
 unsafe impl<A: GlobalAlloc> GlobalAlloc for CheckedAllocator<A> {
 	unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-		let p = self.allocator.alloc(layout);
+		let p = unsafe { self.allocator.alloc(layout) };
 		self.track_alloc(p, layout);
 		p
 	}
 
 	unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
 		self.track_dealloc(ptr, layout);
-		self.allocator.dealloc(ptr, layout)
+		unsafe { self.allocator.dealloc(ptr, layout) }
 	}
 
 	unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
-		let p = self.allocator.alloc_zeroed(layout);
+		let p = unsafe { self.allocator.alloc_zeroed(layout) };
 		self.track_alloc(p, layout);
 
 		if !p.is_null() {
-			for p in (0..layout.size()).map(|i| p.byte_add(i)) {
-				assert_eq!(p.cast::<u8>().read(), 0u8);
+			for p in (0..layout.size()).map(|i| unsafe { p.byte_add(i) }) {
+				assert_eq!(unsafe { p.cast::<u8>().read() }, 0u8);
 			}
 		}
 
@@ -87,7 +87,7 @@ unsafe impl<A: GlobalAlloc> GlobalAlloc for CheckedAllocator<A> {
 
 	unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
 		self.track_dealloc(ptr, layout);
-		let p = self.allocator.realloc(ptr, layout, new_size);
+		let p = unsafe { self.allocator.realloc(ptr, layout, new_size) };
 		self.track_alloc(p, layout);
 		p
 	}

@@ -73,15 +73,17 @@ pub unsafe fn futex_wait(
 	val: u32,
 	timeout: Option<Timespec>,
 ) -> Result<(), syscalls::Errno> {
-	futex_timeout::<{ linux_raw_sys::general::FUTEX_WAIT }>(uaddr, flags, val, timeout, ptr::null(), 0).map(|ret| {
-		debug_assert_eq!(ret, 0);
-	})
+	unsafe {
+		futex_timeout::<{ linux_raw_sys::general::FUTEX_WAIT }>(uaddr, flags, val, timeout, ptr::null(), 0).map(|ret| {
+			debug_assert_eq!(ret, 0);
+		})
+	}
 }
 
 /// Equivalent to `syscall(SYS_futex, uaddr, FUTEX_WAKE, val, NULL, NULL, 0)`
 #[inline]
 pub unsafe fn futex_wake(uaddr: &AtomicU32, flags: FutexFlags, val: u32) -> Result<usize, syscalls::Errno> {
-	futex_val2::<{ linux_raw_sys::general::FUTEX_WAKE }>(uaddr, flags, val, 0, ptr::null(), 0)
+	unsafe { futex_val2::<{ linux_raw_sys::general::FUTEX_WAKE }>(uaddr, flags, val, 0, ptr::null(), 0) }
 }
 
 /// Equivalent to `syscall(SYS_futex, uaddr, FUTEX_REQUEUE, val, val2, uaddr2, 0)`
@@ -93,7 +95,7 @@ pub unsafe fn futex_requeue(
 	val2: u32,
 	uaddr2: &AtomicU32,
 ) -> Result<usize, syscalls::Errno> {
-	futex_val2::<{ linux_raw_sys::general::FUTEX_REQUEUE }>(uaddr, flags, val, val2, uaddr2, 0)
+	unsafe { futex_val2::<{ linux_raw_sys::general::FUTEX_REQUEUE }>(uaddr, flags, val, val2, uaddr2, 0) }
 }
 
 /// Equivalent to `syscall(SYS_futex, uaddr, FUTEX_CMP_REQUEUE, val, val2, uaddr2, val3)`
@@ -106,7 +108,7 @@ pub unsafe fn futex_cmp_requeue(
 	uaddr2: &AtomicU32,
 	val3: u32,
 ) -> Result<usize, syscalls::Errno> {
-	futex_val2::<{ linux_raw_sys::general::FUTEX_CMP_REQUEUE }>(uaddr, flags, val, val2, uaddr2, val3)
+	unsafe { futex_val2::<{ linux_raw_sys::general::FUTEX_CMP_REQUEUE }>(uaddr, flags, val, val2, uaddr2, val3) }
 }
 
 /// `FUTEX_OP_*` operations for use with [`wake_op`].
@@ -167,13 +169,15 @@ pub unsafe fn futex_wake_op(
 	oparg: u16,
 	cmparg: u16,
 ) -> Result<usize, syscalls::Errno> {
-	if oparg >= 1 << 12 || cmparg >= 1 << 12 {
-		return Err(syscalls::Errno::EINVAL);
+	unsafe {
+		if oparg >= 1 << 12 || cmparg >= 1 << 12 {
+			return Err(syscalls::Errno::EINVAL);
+		}
+
+		let val3 = ((op as u32) << 28) | ((cmp as u32) << 24) | ((oparg as u32) << 12) | (cmparg as u32);
+
+		futex_val2::<{ linux_raw_sys::general::FUTEX_WAKE_OP }>(uaddr, flags, val, val2, uaddr2, val3)
 	}
-
-	let val3 = ((op as u32) << 28) | ((cmp as u32) << 24) | ((oparg as u32) << 12) | (cmparg as u32);
-
-	futex_val2::<{ linux_raw_sys::general::FUTEX_WAKE_OP }>(uaddr, flags, val, val2, uaddr2, val3)
 }
 
 /// Equivalent to `syscall(SYS_futex, uaddr, FUTEX_LOCK_PI, 0, timeout, NULL, 0)`
@@ -183,23 +187,29 @@ pub unsafe fn futex_lock_pi(
 	flags: FutexFlags,
 	timeout: Option<Timespec>,
 ) -> Result<(), syscalls::Errno> {
-	futex_timeout::<{ linux_raw_sys::general::FUTEX_LOCK_PI }>(uaddr, flags, 0, timeout, ptr::null(), 0).map(|ret| {
-		debug_assert_eq!(ret, 0);
-	})
+	unsafe {
+		futex_timeout::<{ linux_raw_sys::general::FUTEX_LOCK_PI }>(uaddr, flags, 0, timeout, ptr::null(), 0).map(|ret| {
+			debug_assert_eq!(ret, 0);
+		})
+	}
 }
 
 /// Equivalent to `syscall(SYS_futex, uaddr, FUTEX_UNLOCK_PI, 0, NULL, NULL, 0)`
 #[inline]
 pub unsafe fn futex_unlock_pi(uaddr: &AtomicU32, flags: FutexFlags) -> Result<(), syscalls::Errno> {
-	futex_val2::<{ linux_raw_sys::general::FUTEX_UNLOCK_PI }>(uaddr, flags, 0, 0, ptr::null(), 0).map(|ret| {
-		debug_assert_eq!(ret, 0);
-	})
+	unsafe {
+		futex_val2::<{ linux_raw_sys::general::FUTEX_UNLOCK_PI }>(uaddr, flags, 0, 0, ptr::null(), 0).map(|ret| {
+			debug_assert_eq!(ret, 0);
+		})
+	}
 }
 
 /// Equivalent to `syscall(SYS_futex, uaddr, FUTEX_TRYLOCK_PI, 0, NULL, NULL, 0)`
 #[inline]
 pub unsafe fn futex_trylock_pi(uaddr: &AtomicU32, flags: FutexFlags) -> Result<bool, syscalls::Errno> {
-	futex_val2::<{ linux_raw_sys::general::FUTEX_TRYLOCK_PI }>(uaddr, flags, 0, 0, ptr::null(), 0).map(|ret| ret == 0)
+	unsafe {
+		futex_val2::<{ linux_raw_sys::general::FUTEX_TRYLOCK_PI }>(uaddr, flags, 0, 0, ptr::null(), 0).map(|ret| ret == 0)
+	}
 }
 
 /// Equivalent to `syscall(SYS_futex, uaddr, FUTEX_WAIT_BITSET, val, timeout/val2, NULL, val3)`
@@ -211,10 +221,12 @@ pub unsafe fn futex_wait_bitset(
 	timeout: Option<Timespec>,
 	val3: NonZero<u32>,
 ) -> Result<(), syscalls::Errno> {
-	futex_timeout::<{ linux_raw_sys::general::FUTEX_WAIT_BITSET }>(uaddr, flags, val, timeout, ptr::null(), val3.get())
-		.map(|ret| {
-			debug_assert_eq!(ret, 0);
-		})
+	unsafe {
+		futex_timeout::<{ linux_raw_sys::general::FUTEX_WAIT_BITSET }>(uaddr, flags, val, timeout, ptr::null(), val3.get())
+			.map(|ret| {
+				debug_assert_eq!(ret, 0);
+			})
+	}
 }
 
 /// Equivalent to `syscall(SYS_futex, uaddr, FUTEX_WAKE_BITSET, val, NULL, NULL, val3)`
@@ -225,7 +237,7 @@ pub unsafe fn futex_wake_bitset(
 	val: u32,
 	val3: NonZero<u32>,
 ) -> Result<usize, syscalls::Errno> {
-	futex_val2::<{ linux_raw_sys::general::FUTEX_WAKE_BITSET }>(uaddr, flags, val, 0, ptr::null(), val3.get())
+	unsafe { futex_val2::<{ linux_raw_sys::general::FUTEX_WAKE_BITSET }>(uaddr, flags, val, 0, ptr::null(), val3.get()) }
 }
 
 /// Equivalent to `syscall(SYS_futex, uaddr, FUTEX_WAIT_REQUEUE_PI, val, timeout, uaddr2, 0)`
@@ -237,9 +249,13 @@ pub unsafe fn futex_wait_requeue_pi(
 	timeout: Option<Timespec>,
 	uaddr2: &AtomicU32,
 ) -> Result<(), syscalls::Errno> {
-	futex_timeout::<{ linux_raw_sys::general::FUTEX_WAIT_REQUEUE_PI }>(uaddr, flags, val, timeout, uaddr2, 0).map(|ret| {
-		debug_assert_eq!(ret, 0);
-	})
+	unsafe {
+		futex_timeout::<{ linux_raw_sys::general::FUTEX_WAIT_REQUEUE_PI }>(uaddr, flags, val, timeout, uaddr2, 0).map(
+			|ret| {
+				debug_assert_eq!(ret, 0);
+			},
+		)
+	}
 }
 
 /// Equivalent to `syscall(SYS_futex, uaddr, FUTEX_CMP_REQUEUE_PI, 1, val2, uaddr2, val3)`
@@ -251,7 +267,7 @@ pub unsafe fn futex_cmp_requeue_pi(
 	uaddr2: &AtomicU32,
 	val3: u32,
 ) -> Result<usize, syscalls::Errno> {
-	futex_val2::<{ linux_raw_sys::general::FUTEX_CMP_REQUEUE_PI }>(uaddr, flags, 1, val2, uaddr2, val3)
+	unsafe { futex_val2::<{ linux_raw_sys::general::FUTEX_CMP_REQUEUE_PI }>(uaddr, flags, 1, val2, uaddr2, val3) }
 }
 
 /// Equivalent to `syscall(SYS_futex, uaddr, FUTEX_LOCK_PI2, 0, timeout, NULL, 0)`
@@ -261,7 +277,9 @@ pub unsafe fn futex_lock_pi2(
 	flags: FutexFlags,
 	timeout: Option<Timespec>,
 ) -> Result<(), syscalls::Errno> {
-	futex_timeout::<{ linux_raw_sys::general::FUTEX_LOCK_PI2 }>(uaddr, flags, 0, timeout, ptr::null(), 0).map(|ret| {
-		debug_assert_eq!(ret, 0);
-	})
+	unsafe {
+		futex_timeout::<{ linux_raw_sys::general::FUTEX_LOCK_PI2 }>(uaddr, flags, 0, timeout, ptr::null(), 0).map(|ret| {
+			debug_assert_eq!(ret, 0);
+		})
+	}
 }

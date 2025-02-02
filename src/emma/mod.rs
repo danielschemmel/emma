@@ -282,13 +282,15 @@ impl Heap {
 		let bin = (size.get() + 7) / 8;
 		debug_assert!(bin > 0);
 		if bin <= self.small_object_pages.len() {
-			small_objects::alloc(
-				&mut self.small_object_pages[bin - 1],
-				&mut self.small_object_reserve,
-				(bin * 8) as u32,
-				#[cfg(feature = "tls")]
-				self.id,
-			)
+			unsafe {
+				small_objects::alloc(
+					&mut self.small_object_pages[bin - 1],
+					&mut self.small_object_reserve,
+					(bin * 8) as u32,
+					#[cfg(feature = "tls")]
+					self.id,
+				)
+			}
 		} else {
 			let bin = powerlaw_bin_from_size(size.get());
 			if bin
@@ -309,14 +311,16 @@ impl Heap {
 						bin
 					);
 				}
-				medium_objects::alloc(
-					&mut self.medium_object_pages
-						[(bin - powerlaw_bin_from_size((small_objects::MAXIMUM_OBJECT_ALIGNMENT * 2) as usize)) as usize],
-					&mut self.medium_object_reserve,
-					powerlaw_bins_round_up_size(size).get() as u32,
-					#[cfg(feature = "tls")]
-					self.id,
-				)
+				unsafe {
+					medium_objects::alloc(
+						&mut self.medium_object_pages
+							[(bin - powerlaw_bin_from_size((small_objects::MAXIMUM_OBJECT_ALIGNMENT * 2) as usize)) as usize],
+						&mut self.medium_object_reserve,
+						powerlaw_bins_round_up_size(size).get() as u32,
+						#[cfg(feature = "tls")]
+						self.id,
+					)
+				}
 			} else if bin
 				<= powerlaw_bin_from_size(
 					(large_objects::MAXIMUM_OBJECT_ALIGNMENT
@@ -328,16 +332,18 @@ impl Heap {
 					bin,
 					powerlaw_bin_from_size(powerlaw_bins_round_up_size(size).get() as u32 as usize)
 				);
-				large_objects::alloc(
-					&mut self.large_object_pages
-						[(bin - powerlaw_bin_from_size((medium_objects::MAXIMUM_OBJECT_ALIGNMENT * 2) as usize)) as usize],
-					powerlaw_bins_round_up_size(size).get() as u32,
-					#[cfg(feature = "tls")]
-					self.id,
-				)
+				unsafe {
+					large_objects::alloc(
+						&mut self.large_object_pages
+							[(bin - powerlaw_bin_from_size((medium_objects::MAXIMUM_OBJECT_ALIGNMENT * 2) as usize)) as usize],
+						powerlaw_bins_round_up_size(size).get() as u32,
+						#[cfg(feature = "tls")]
+						self.id,
+					)
+				}
 			} else {
 				let size = (size.get() + 4095) & !4095;
-				alloc_aligned(NonZero::new(size).unwrap(), alignment, 3)
+				unsafe { alloc_aligned(NonZero::new(size).unwrap(), alignment, 3) }
 					.map(|ptr| ptr.as_ptr().cast())
 					.unwrap_or(ptr::null_mut())
 			}
@@ -351,42 +357,44 @@ impl Heap {
 		size: NonZero<usize>,
 		_alignment: NonZero<usize>,
 	) {
-		let bin = (size.get() + 7) / 8;
-		debug_assert!(bin > 0);
-		if bin <= NUM_SMALL_OBJECT_BINS {
-			debug_assert!(!ptr.is_null());
-			small_objects::Page::dealloc(
-				#[cfg(feature = "tls")]
-				id,
-				NonNull::new_unchecked(ptr),
-			);
-		} else {
-			let bin = powerlaw_bin_from_size(size.get());
-			if bin
-				<= powerlaw_bin_from_size(
-					(medium_objects::MAXIMUM_OBJECT_ALIGNMENT
-						+ medium_objects::MAXIMUM_OBJECT_ALIGNMENT / 2
-						+ medium_objects::MAXIMUM_OBJECT_ALIGNMENT / 4) as usize,
-				) {
-				medium_objects::Page::dealloc(
-					#[cfg(feature = "tls")]
-					id,
-					NonNull::new_unchecked(ptr),
-				);
-			} else if bin
-				<= powerlaw_bin_from_size(
-					(large_objects::MAXIMUM_OBJECT_ALIGNMENT
-						+ large_objects::MAXIMUM_OBJECT_ALIGNMENT / 2
-						+ large_objects::MAXIMUM_OBJECT_ALIGNMENT / 4) as usize,
-				) {
-				large_objects::Page::dealloc(
+		unsafe {
+			let bin = (size.get() + 7) / 8;
+			debug_assert!(bin > 0);
+			if bin <= NUM_SMALL_OBJECT_BINS {
+				debug_assert!(!ptr.is_null());
+				small_objects::Page::dealloc(
 					#[cfg(feature = "tls")]
 					id,
 					NonNull::new_unchecked(ptr),
 				);
 			} else {
-				let size = (size.get() + 4095) & !4095;
-				munmap(NonNull::new(ptr.cast()).unwrap(), NonZero::new(size).unwrap()).unwrap();
+				let bin = powerlaw_bin_from_size(size.get());
+				if bin
+					<= powerlaw_bin_from_size(
+						(medium_objects::MAXIMUM_OBJECT_ALIGNMENT
+							+ medium_objects::MAXIMUM_OBJECT_ALIGNMENT / 2
+							+ medium_objects::MAXIMUM_OBJECT_ALIGNMENT / 4) as usize,
+					) {
+					medium_objects::Page::dealloc(
+						#[cfg(feature = "tls")]
+						id,
+						NonNull::new_unchecked(ptr),
+					);
+				} else if bin
+					<= powerlaw_bin_from_size(
+						(large_objects::MAXIMUM_OBJECT_ALIGNMENT
+							+ large_objects::MAXIMUM_OBJECT_ALIGNMENT / 2
+							+ large_objects::MAXIMUM_OBJECT_ALIGNMENT / 4) as usize,
+					) {
+					large_objects::Page::dealloc(
+						#[cfg(feature = "tls")]
+						id,
+						NonNull::new_unchecked(ptr),
+					);
+				} else {
+					let size = (size.get() + 4095) & !4095;
+					munmap(NonNull::new(ptr.cast()).unwrap(), NonZero::new(size).unwrap()).unwrap();
+				}
 			}
 		}
 	}
@@ -403,7 +411,7 @@ unsafe impl alloc::alloc::GlobalAlloc for Emma {
 		let layout = layout.pad_to_align();
 
 		#[cfg(not(feature = "tls"))]
-		{
+		unsafe {
 			self.heap.lock().alloc(
 				NonZero::new(layout.size()).unwrap(),
 				NonZero::new(layout.align()).unwrap(),
@@ -444,7 +452,7 @@ unsafe impl alloc::alloc::GlobalAlloc for Emma {
 		}
 
 		let layout = layout.pad_to_align();
-		let new_layout = Layout::from_size_align_unchecked(new_size, layout.align()).pad_to_align();
+		let new_layout = unsafe { Layout::from_size_align_unchecked(new_size, layout.align()).pad_to_align() };
 
 		if layout.size() / 8 < NUM_SMALL_OBJECT_BINS {
 			if layout.size() / 8 == new_layout.size() / 8 {
@@ -480,24 +488,27 @@ unsafe impl alloc::alloc::GlobalAlloc for Emma {
 				let new_size = (new_layout.size() + 4095) & !4095;
 				match old_size.cmp(&new_size) {
 					core::cmp::Ordering::Less => {
-						if crate::mmap::mremap_resize(
-							NonNull::new_unchecked(ptr).cast(),
-							NonZero::new_unchecked(old_size),
-							NonZero::new_unchecked(new_size),
-						)
-						.is_ok()
-						{
+						if unsafe {
+							crate::mmap::mremap_resize(
+								NonNull::new_unchecked(ptr).cast(),
+								NonZero::new_unchecked(old_size),
+								NonZero::new_unchecked(new_size),
+							)
+							.is_ok()
+						} {
 							return ptr;
 						}
 					}
 					core::cmp::Ordering::Equal => return ptr,
 					core::cmp::Ordering::Greater => {
-						crate::mmap::mremap_resize(
-							NonNull::new_unchecked(ptr).cast(),
-							NonZero::new_unchecked(old_size),
-							NonZero::new_unchecked(new_size),
-						)
-						.unwrap();
+						unsafe {
+							crate::mmap::mremap_resize(
+								NonNull::new_unchecked(ptr).cast(),
+								NonZero::new_unchecked(old_size),
+								NonZero::new_unchecked(new_size),
+							)
+							.unwrap()
+						};
 						return ptr;
 					}
 				}
@@ -533,7 +544,7 @@ unsafe impl alloc::alloc::GlobalAlloc for Emma {
 		let layout = layout.pad_to_align();
 
 		#[cfg(not(feature = "tls"))]
-		{
+		unsafe {
 			self.heap.lock().dealloc(
 				ptr,
 				NonZero::new(layout.size()).unwrap(),

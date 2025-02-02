@@ -8,8 +8,8 @@ use syscalls::Errno;
 
 use super::Heap;
 use crate::mmap::alloc_aligned;
-use crate::sync::syscalls::FUTEX_OWNER_DIED;
 use crate::sync::Futex;
+use crate::sync::syscalls::FUTEX_OWNER_DIED;
 use crate::sys::Pid;
 
 #[derive(Debug, Default)]
