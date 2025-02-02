@@ -6,7 +6,7 @@ use std::ptr::NonNull;
 use std::sync::Mutex;
 
 use emma::DefaultEmma;
-use rand::distributions::Uniform;
+use rand_distr::Uniform;
 
 extern crate alloc;
 use alloc::alloc::GlobalAlloc;
@@ -99,7 +99,7 @@ fn main() {
 
 	let mut rng = rand_chacha::ChaChaRng::seed_from_u64(u64::from_be_bytes(*b"emmaEMMA"));
 
-	let operation_dist = Uniform::new(0, 100);
+	let operation_dist = Uniform::new(0, 100).unwrap();
 	let size_dist = Exp::<f64>::new(0.00075).unwrap();
 
 	unsafe {
@@ -123,7 +123,7 @@ fn main() {
 				// realloc
 			} else {
 				// dealloc
-				let i = rng.gen_range(0..objs.len());
+				let i = rng.random_range(0..objs.len());
 				EMMA.dealloc(objs[i].0.as_ptr(), objs[i].1);
 				objs.swap_remove(i);
 			}
