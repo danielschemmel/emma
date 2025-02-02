@@ -21,7 +21,7 @@ impl HeapManager {
 	}
 
 	pub unsafe fn acquire_thread_heap(&self) -> Option<NonNull<Heap>> {
-		THREAD_HEAPS.lock().acquire_thread_heap()
+		unsafe { THREAD_HEAPS.lock().acquire_thread_heap() }
 	}
 }
 
@@ -45,31 +45,34 @@ impl ThreadHeaps {
 	}
 
 	pub unsafe fn acquire_thread_heap(&mut self) -> Option<NonNull<Heap>> {
-		if let Some(already_owned) = self.fixup_fork() {
+		if let Some(already_owned) = unsafe { self.fixup_fork() } {
 			return Some(already_owned);
 		}
 
 		let mut p = self.heaps;
 		while let Some(thread_heap) = p {
-			let thread_lock = thread_heap
-				.byte_add(offset_of!(ThreadHeap, thread_lock))
-				.cast::<AtomicU32>();
+			let thread_lock = unsafe {
+				thread_heap
+					.byte_add(offset_of!(ThreadHeap, thread_lock))
+					.cast::<AtomicU32>()
+					.as_ref()
+			};
 
 			// a robust futex sadly requires a global resource: https://www.man7.org/linux/man-pages/man2/set_robust_list.2.html
-			let tid = thread_lock.as_ref().load(Ordering::Relaxed);
-			match crate::sync::syscalls::futex_trylock_pi(thread_lock.as_ref(), crate::sync::syscalls::FutexFlags::PRIVATE) {
+			let tid = thread_lock.load(Ordering::Relaxed);
+			match unsafe { crate::sync::syscalls::futex_trylock_pi(thread_lock, crate::sync::syscalls::FutexFlags::PRIVATE) }
+			{
 				Ok(true) => {
-					thread_lock.as_ref().fetch_nand(FUTEX_OWNER_DIED, Ordering::Release);
-					return Some(thread_heap.byte_add(offset_of!(ThreadHeap, heap)).cast::<Heap>());
+					thread_lock.fetch_nand(FUTEX_OWNER_DIED, Ordering::Release);
+					return Some(unsafe { thread_heap.byte_add(offset_of!(ThreadHeap, heap)).cast::<Heap>() });
 				}
 				Ok(false) | Err(Errno::EAGAIN) => (),
 				Err(Errno::ESRCH) => {
 					if thread_lock
-						.as_ref()
 						.compare_exchange(tid, crate::sys::gettid(), Ordering::Acquire, Ordering::Relaxed)
 						.is_ok()
 					{
-						return Some(thread_heap.byte_add(offset_of!(ThreadHeap, heap)).cast::<Heap>());
+						return Some(unsafe { thread_heap.byte_add(offset_of!(ThreadHeap, heap)).cast::<Heap>() });
 					}
 				}
 				Err(Errno::EDEADLK) => {
@@ -80,7 +83,7 @@ impl ThreadHeaps {
 					// 3. The first thread allocating memory in the new process is not the main thread
 					// 4. The main thread now allocates memory, which causes it to look for an available heap. It will find a heap
 					//    that it has already locked due to the fixup done previously.
-					return Some(thread_heap.byte_add(offset_of!(ThreadHeap, heap)).cast::<Heap>());
+					return Some(unsafe { thread_heap.byte_add(offset_of!(ThreadHeap, heap)).cast::<Heap>() });
 				}
 				Err(Errno::ENOMEM) => panic!("ENOMEM"),
 				Err(Errno::EINVAL) => panic!("EINVAL"),
@@ -89,25 +92,29 @@ impl ThreadHeaps {
 				Err(err) => panic!("{}", err),
 			}
 
-			p = *thread_heap
-				.byte_add(offset_of!(ThreadHeap, next))
-				.cast::<Option<NonNull<ThreadHeap>>>()
-				.as_ref();
+			p = unsafe {
+				*thread_heap
+					.byte_add(offset_of!(ThreadHeap, next))
+					.cast::<Option<NonNull<ThreadHeap>>>()
+					.as_ref()
+			};
 		}
 
 		const_assert_eq!(size_of::<ThreadHeap>() % align_of::<ThreadHeap>(), 0);
 		let size = (size_of::<ThreadHeap>() + 4095) & !4095;
-		let thread_heap = alloc_aligned(
-			NonZero::new(size).unwrap(),
-			NonZero::new(align_of::<ThreadHeap>()).unwrap(),
-			3,
-		)?
-		.cast::<ThreadHeap>();
+		let thread_heap = unsafe {
+			alloc_aligned(
+				NonZero::new(size).unwrap(),
+				NonZero::new(align_of::<ThreadHeap>()).unwrap(),
+				3,
+			)?
+			.cast::<ThreadHeap>()
+		};
 
-		thread_heap.write(ThreadHeap::new(self.heaps));
+		unsafe { thread_heap.write(ThreadHeap::new(self.heaps)) };
 		self.heaps = Some(thread_heap);
 
-		Some(thread_heap.byte_add(offset_of!(ThreadHeap, heap)).cast::<Heap>())
+		Some(unsafe { thread_heap.byte_add(offset_of!(ThreadHeap, heap)).cast::<Heap>() })
 	}
 
 	/// Fixes up locks on existing threads post fork. Potentially returns an already owned heap.
@@ -125,16 +132,19 @@ impl ThreadHeaps {
 			// of the process.
 			if let Some(mut heap) = self.heaps {
 				loop {
-					heap
-						.byte_add(offset_of!(ThreadHeap, thread_lock))
-						.cast::<AtomicU32>()
-						.as_mut()
-						.store(pid, Ordering::Relaxed);
-					if let Some(next) = *heap
-						.byte_add(offset_of!(ThreadHeap, next))
-						.cast::<Option<NonNull<ThreadHeap>>>()
-						.as_ref()
-					{
+					unsafe {
+						heap
+							.byte_add(offset_of!(ThreadHeap, thread_lock))
+							.cast::<AtomicU32>()
+							.as_mut()
+							.store(pid, Ordering::Relaxed)
+					};
+					if let Some(next) = unsafe {
+						*heap
+							.byte_add(offset_of!(ThreadHeap, next))
+							.cast::<Option<NonNull<ThreadHeap>>>()
+							.as_ref()
+					} {
 						heap = next;
 					} else {
 						break;
@@ -142,13 +152,13 @@ impl ThreadHeaps {
 				}
 
 				if crate::sys::gettid() == pid {
-					return Some(
+					return Some(unsafe {
 						self
 							.heaps
 							.unwrap()
 							.byte_add(offset_of!(ThreadHeap, heap))
-							.cast::<Heap>(),
-					);
+							.cast::<Heap>()
+					});
 				}
 			}
 		}

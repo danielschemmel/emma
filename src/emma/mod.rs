@@ -419,10 +419,12 @@ unsafe impl alloc::alloc::GlobalAlloc for Emma {
 		}
 		#[cfg(feature = "tls")]
 		if let Some(mut thread_heap) = self.thread_heap() {
-			let ret = thread_heap.as_mut().alloc(
-				NonZero::new(layout.size()).unwrap(),
-				NonZero::new(layout.align()).unwrap(),
-			);
+			let ret = unsafe {
+				thread_heap.as_mut().alloc(
+					NonZero::new(layout.size()).unwrap(),
+					NonZero::new(layout.align()).unwrap(),
+				)
+			};
 			debug_assert!(
 				ret.is_null() || ret as usize > 4096,
 				"We should return a proper null-pointer"
@@ -552,7 +554,7 @@ unsafe impl alloc::alloc::GlobalAlloc for Emma {
 			)
 		}
 		#[cfg(feature = "tls")]
-		{
+		unsafe {
 			Heap::dealloc(
 				// If we do not currently hold a heap, we can just use the NULL id that no allocated page should use.
 				// This will end up using the foreign deallocation scheme - but as this thread does not have a heap, it could

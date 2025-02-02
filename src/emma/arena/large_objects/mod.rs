@@ -128,31 +128,33 @@ impl Page {
 	#[cfg(feature = "tls")]
 	#[inline]
 	pub unsafe fn dealloc(heap_id: HeapId, p: NonNull<u8>) {
-		let arena = Arena::from_inner_ptr(p);
-		let mut page = arena.byte_add(offset_of!(Arena, page)).cast::<Page>();
+		unsafe {
+			let arena = Arena::from_inner_ptr(p);
+			let mut page = arena.byte_add(offset_of!(Arena, page)).cast::<Page>();
 
-		let p_offset = Arena::object_offset(p);
+			let p_offset = Arena::object_offset(p);
 
-		let owner = arena
-			.byte_add(offset_of!(Arena, owner))
-			.cast::<AtomicHeapId>()
-			.as_ref()
-			.load(Ordering::Relaxed);
-		if owner == heap_id {
-			let page = page.as_mut();
-			p.cast::<Option<NonZero<u32>>>().write(page.free_list);
-			page.free_list = Some(p_offset);
-		} else {
-			let free_list = page
-				.byte_add(offset_of!(Page, foreign_free_list))
-				.cast::<AtomicU32>()
-				.as_ref();
-			let mut next = free_list.load(Ordering::Relaxed);
-			loop {
-				p.cast::<Option<NonZero<u32>>>().write(NonZero::new(next));
-				match free_list.compare_exchange(next, p_offset.get(), Ordering::Release, Ordering::Relaxed) {
-					Ok(_) => break,
-					Err(new_next) => next = new_next,
+			let owner = arena
+				.byte_add(offset_of!(Arena, owner))
+				.cast::<AtomicHeapId>()
+				.as_ref()
+				.load(Ordering::Relaxed);
+			if owner == heap_id {
+				let page = page.as_mut();
+				p.cast::<Option<NonZero<u32>>>().write(page.free_list);
+				page.free_list = Some(p_offset);
+			} else {
+				let free_list = page
+					.byte_add(offset_of!(Page, foreign_free_list))
+					.cast::<AtomicU32>()
+					.as_ref();
+				let mut next = free_list.load(Ordering::Relaxed);
+				loop {
+					p.cast::<Option<NonZero<u32>>>().write(NonZero::new(next));
+					match free_list.compare_exchange(next, p_offset.get(), Ordering::Release, Ordering::Relaxed) {
+						Ok(_) => break,
+						Err(new_next) => next = new_next,
+					}
 				}
 			}
 		}
