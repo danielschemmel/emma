@@ -18,7 +18,6 @@ bitflags::bitflags! {
 		const SHARED = linux_raw_sys::general::MAP_SHARED;
 		const SHARED_VALIDATE = linux_raw_sys::general::MAP_SHARED_VALIDATE;
 		const PRIVATE = linux_raw_sys::general::MAP_PRIVATE;
-		const FIRST32BIT = linux_raw_sys::general::MAP_32BIT;
 		const ANONYMOUS = linux_raw_sys::general::MAP_ANONYMOUS;
 		const FIXED = linux_raw_sys::general::MAP_FIXED;
 		const FIXED_NOREPLACE = linux_raw_sys::general::MAP_FIXED_NOREPLACE;
