@@ -88,11 +88,11 @@ unsafe fn mmap_aligned_rec(
 				debug_assert_eq!(mapping.as_ptr() as usize & (alignment.get() - 1), 0);
 				return Some(mapping);
 			}
-			if mapping.as_ptr() as usize > misalignment.get() {
-				if let Some(mapping) = move_mapping_down(mapping, size, misalignment, prot, flags) {
-					debug_assert_eq!(mapping.as_ptr() as usize & (alignment.get() - 1), 0);
-					return Some(mapping);
-				}
+			if mapping.as_ptr() as usize > misalignment.get()
+				&& let Some(mapping) = move_mapping_down(mapping, size, misalignment, prot, flags)
+			{
+				debug_assert_eq!(mapping.as_ptr() as usize & (alignment.get() - 1), 0);
+				return Some(mapping);
 			}
 
 			if recursive_retries > 0 {

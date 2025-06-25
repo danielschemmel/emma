@@ -62,19 +62,19 @@ impl Emma {
 		const TLS_ENABLED: &str = "disabled";
 		#[cfg(feature = "tls")]
 		const TLS_ENABLED: &str = "enabled";
-		writeln!(f, "tls {}", TLS_ENABLED)?;
+		writeln!(f, "tls {TLS_ENABLED}")?;
 
 		#[cfg(not(feature = "boundary-checks"))]
 		const BOUNDARY_CHECKS_ENABLED: &str = "disabled";
 		#[cfg(feature = "boundary-checks")]
 		const BOUNDARY_CHECKS_ENABLED: &str = "enabled";
-		writeln!(f, "boundary checks {}", BOUNDARY_CHECKS_ENABLED)?;
+		writeln!(f, "boundary checks {BOUNDARY_CHECKS_ENABLED}")?;
 
 		#[cfg(not(debug_assertions))]
 		const DEBUG_ASSERTIONS_ENABLED: &str = "disabled";
 		#[cfg(debug_assertions)]
 		const DEBUG_ASSERTIONS_ENABLED: &str = "enabled";
-		writeln!(f, "debug assertions {}", DEBUG_ASSERTIONS_ENABLED)?;
+		writeln!(f, "debug assertions {DEBUG_ASSERTIONS_ENABLED}")?;
 		writeln!(f)?;
 
 		writeln!(f, "Object Sizes")?;
