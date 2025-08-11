@@ -163,6 +163,6 @@ mod test {
 
 	#[test]
 	fn mmap_aligned_100x1g() {
-		mmap_aligned_and_unmap(100, 1 * 1024 * 1024 * 1024);
+		mmap_aligned_and_unmap(100, 1024 * 1024 * 1024);
 	}
 }

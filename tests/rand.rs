@@ -109,7 +109,7 @@ fn main() {
 
 			if objs.is_empty() || operation < 40 {
 				// alloc
-				let size = size_dist.sample(&mut rng).min(10000.).max(1.) as usize;
+				let size = size_dist.sample(&mut rng).clamp(1., 10000.) as usize;
 				let layout = Layout::from_size_align(size, 8).unwrap();
 				let p = NonNull::new(EMMA.alloc(layout)).unwrap();
 				assert_eq!(p.as_ptr() as usize % layout.align(), 0);

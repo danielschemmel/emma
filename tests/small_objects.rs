@@ -8,8 +8,8 @@ use alloc::alloc::GlobalAlloc;
 
 static EMMA: DefaultEmma = DefaultEmma::new();
 
-unsafe fn check(objs: &Vec<(NonNull<u8>, Layout)>) {
-	let mut sorted = objs.clone();
+unsafe fn check(objs: &[(NonNull<u8>, Layout)]) {
+	let mut sorted = objs.to_owned();
 	sorted.sort_by(|a, b| a.0.cmp(&b.0));
 	for w in sorted.windows(2) {
 		assert_eq!(w.len(), 2);
@@ -31,7 +31,7 @@ unsafe fn check(objs: &Vec<(NonNull<u8>, Layout)>) {
 	}
 }
 
-unsafe fn replace_nth(objs: &mut Vec<(NonNull<u8>, Layout)>, n: usize, layout: Layout) {
+unsafe fn replace_nth(objs: &mut [(NonNull<u8>, Layout)], n: usize, layout: Layout) {
 	for (i, o) in objs.iter_mut().enumerate() {
 		if i % n == 0 {
 			unsafe { EMMA.dealloc(o.0.as_ptr(), o.1) };
@@ -44,7 +44,7 @@ unsafe fn replace_nth(objs: &mut Vec<(NonNull<u8>, Layout)>, n: usize, layout: L
 			*o = (p, layout);
 		}
 	}
-	unsafe { check(&objs) };
+	unsafe { check(objs) };
 }
 
 #[test]
