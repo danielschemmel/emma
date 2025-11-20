@@ -1,12 +1,12 @@
 [package]
-name = "cache-thrash"
-version = "0.0.0"
 edition = "2021"
+name = "cache-thrash"
 publish = false
+version = "0.0.0"
 
 [profile.release]
-lto = true
 codegen-units = 1
+lto = true
 
 [dependencies]
 allocator = { path = "../../allocator" }

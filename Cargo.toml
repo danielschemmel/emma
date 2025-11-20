@@ -1,12 +1,12 @@
 [package]
-name = "emma"
-version = "0.0.2"
 authors = ["Daniel Schemmel <daniel@schemmel.net"]
-repository = "https://github.com/danielschemmel/emma/"
-license = "MIT OR Apache-2.0"
 description = "A full-fledged `no_std` and \"no-libc\" capable memory allocator."
 keywords = ["alloc", "allocator", "malloc", "no_std"]
+license = "MIT OR Apache-2.0"
+name = "emma"
 readme = "README.md"
+repository = "https://github.com/danielschemmel/emma/"
+version = "0.0.2"
 
 edition = "2024"
 
@@ -16,7 +16,7 @@ lto = true
 
 [dependencies]
 bitflags = "2.8.0"
-linux-raw-sys = { version = "0.10.0", default-features = false, features = ["no_std", "general"] }
+linux-raw-sys = { version = "0.10.0", default-features = false, features = ["general", "no_std"] }
 lock_api = "0.4.12"
 static_assertions = "1.1.0"
 syscalls = { version = "0.6.18", default-features = false }
@@ -29,5 +29,6 @@ rangemap = "1.5.1"
 
 [features]
 default = []
-tls = []
+
 boundary-checks = []
+tls = []
