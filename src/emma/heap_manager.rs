@@ -3,7 +3,7 @@ use core::num::NonZero;
 use core::ptr::NonNull;
 use core::sync::atomic::{AtomicU32, Ordering};
 
-use static_assertions::const_assert_eq;
+use const_format::assertc;
 use syscalls::Errno;
 
 use super::Heap;
@@ -100,7 +100,12 @@ impl ThreadHeaps {
 			};
 		}
 
-		const_assert_eq!(size_of::<ThreadHeap>() % align_of::<ThreadHeap>(), 0);
+		assertc!(
+			size_of::<ThreadHeap>().is_multiple_of(align_of::<ThreadHeap>()),
+			"The ThreadHeap should have a size ({}) that is a multiple of its alignment ({}).",
+			size_of::<ThreadHeap>(),
+			align_of::<ThreadHeap>()
+		);
 		let size = (size_of::<ThreadHeap>() + 4095) & !4095;
 		let thread_heap = unsafe {
 			alloc_aligned(

@@ -2,9 +2,9 @@ use core::ffi::{c_int, c_uint, c_void};
 use core::num::NonZero;
 use core::ptr::NonNull;
 
-use static_assertions::const_assert_eq;
+use const_format::assertc_eq;
 
-const_assert_eq!(linux_raw_sys::general::PROT_NONE, 0);
+assertc_eq!(linux_raw_sys::general::PROT_NONE, 0u32);
 bitflags::bitflags! {
 	#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
 	pub struct MMapProt: c_uint {

@@ -1,11 +1,11 @@
 use core::ffi::c_int;
 
-use static_assertions::const_assert_eq;
+use const_format::assertc_eq;
 
 pub type Pid = u32;
 pub type Tid = u32;
 
-const_assert_eq!(linux_raw_sys::general::__kernel_pid_t::BITS, u32::BITS);
+assertc_eq!(linux_raw_sys::general::__kernel_pid_t::BITS, u32::BITS);
 
 pub fn getpid() -> Pid {
 	unsafe {

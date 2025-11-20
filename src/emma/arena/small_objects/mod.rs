@@ -2,7 +2,7 @@ use core::mem::{MaybeUninit, offset_of};
 use core::num::NonZero;
 use core::ptr::{self, NonNull};
 
-use static_assertions::{const_assert, const_assert_eq};
+use const_format::assertc;
 #[cfg(feature = "tls")]
 use {
 	crate::emma::{AtomicHeapId, HeapId},
@@ -25,14 +25,26 @@ struct Arena {
 	pages: [Page; PAGES_PER_ARENA as usize],
 }
 
-const_assert!(ARENA_SIZE.is_power_of_two());
-const_assert!(PAGE_SIZE.is_power_of_two());
-const_assert!(MAXIMUM_OBJECT_ALIGNMENT.is_power_of_two());
-const_assert_eq!(ARENA_SIZE % PAGE_SIZE, 0);
-const_assert_eq!(PAGE_SIZE % MAXIMUM_OBJECT_ALIGNMENT, 0);
-const_assert_eq!(METADATA_ZONE_SIZE % MAXIMUM_OBJECT_ALIGNMENT, 0);
-const_assert!(size_of::<Arena>() > (METADATA_ZONE_SIZE - MAXIMUM_OBJECT_ALIGNMENT) as usize);
-const_assert!(size_of::<Arena>() <= METADATA_ZONE_SIZE as usize);
+assertc!(
+	ARENA_SIZE.is_power_of_two(),
+	"The arena size ({}) should be a power of two.",
+	ARENA_SIZE
+);
+assertc!(
+	PAGE_SIZE.is_power_of_two(),
+	"The page size ({}) should be a power of two.",
+	PAGE_SIZE
+);
+assertc!(
+	MAXIMUM_OBJECT_ALIGNMENT.is_power_of_two(),
+	"The maximum object size ({}) should be a power of two.",
+	MAXIMUM_OBJECT_ALIGNMENT
+);
+assertc!(ARENA_SIZE.is_multiple_of(PAGE_SIZE));
+assertc!(PAGE_SIZE.is_multiple_of(MAXIMUM_OBJECT_ALIGNMENT));
+assertc!(METADATA_ZONE_SIZE.is_multiple_of(MAXIMUM_OBJECT_ALIGNMENT));
+assertc!(size_of::<Arena>() > (METADATA_ZONE_SIZE - MAXIMUM_OBJECT_ALIGNMENT) as usize);
+assertc!(size_of::<Arena>() <= METADATA_ZONE_SIZE as usize);
 
 impl Arena {
 	/// Makes a pointer to the arena from any pointer to a location inside the arena.

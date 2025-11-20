@@ -5,7 +5,7 @@ use core::ptr::{self, NonNull};
 use core::sync::atomic::AtomicU64;
 
 use arena::{large_objects, medium_objects, small_objects};
-use static_assertions::const_assert_eq;
+use const_format::assertc_eq;
 
 use crate::mmap::{alloc_aligned, munmap};
 #[cfg(not(feature = "tls"))]
@@ -115,7 +115,7 @@ const NUM_LARGE_OBJECT_BINS: usize = ((u32::ilog2(large_objects::MAXIMUM_OBJECT_
 	- u32::ilog2(medium_objects::MAXIMUM_OBJECT_ALIGNMENT))
 	* 4) as usize;
 
-const_assert_eq!(
+assertc_eq!(
 	(NUM_MEDIUM_OBJECT_BINS - 1) as u32,
 	powerlaw_bin_from_size(
 		(medium_objects::MAXIMUM_OBJECT_ALIGNMENT
@@ -123,7 +123,7 @@ const_assert_eq!(
 			+ medium_objects::MAXIMUM_OBJECT_ALIGNMENT / 4) as usize
 	) - powerlaw_bin_from_size((small_objects::MAXIMUM_OBJECT_ALIGNMENT * 2) as usize)
 );
-const_assert_eq!(
+assertc_eq!(
 	(NUM_LARGE_OBJECT_BINS - 1) as u32,
 	powerlaw_bin_from_size(
 		(large_objects::MAXIMUM_OBJECT_ALIGNMENT
@@ -212,25 +212,25 @@ const fn powerlaw_bin_from_size(size: usize) -> u32 {
 	(usize::BITS - lz - 3) * 4 + (((size + (1 << (usize::BITS - lz - 3)) - 1) >> (usize::BITS - lz - 3)) as u32 - 4)
 }
 
-const_assert_eq!(powerlaw_bin_from_size(0b100), 0);
-const_assert_eq!(powerlaw_bin_from_size(0b101), 1);
-const_assert_eq!(powerlaw_bin_from_size(0b110), 2);
-const_assert_eq!(powerlaw_bin_from_size(0b111), 3);
-const_assert_eq!(powerlaw_bin_from_size(0b1000), 4);
-const_assert_eq!(powerlaw_bin_from_size(0b1001), 5);
-const_assert_eq!(powerlaw_bin_from_size(0b1010), 5);
-const_assert_eq!(powerlaw_bin_from_size(0b100000), 12);
-const_assert_eq!(powerlaw_bin_from_size(0b101000), 13);
-const_assert_eq!(powerlaw_bin_from_size(0b110000), 14);
-const_assert_eq!(powerlaw_bin_from_size(0b111000), 15);
-const_assert_eq!(powerlaw_bin_from_size(0b1000000), 16);
-const_assert_eq!(powerlaw_bin_from_size(0b1001000), 17);
-const_assert_eq!(powerlaw_bin_from_size(0b1010000), 17);
-const_assert_eq!(powerlaw_bin_from_size(0b1011000), 18);
-const_assert_eq!(powerlaw_bin_from_size(0b1100000), 18);
-const_assert_eq!(powerlaw_bin_from_size(0b1101000), 19);
-const_assert_eq!(powerlaw_bin_from_size(0b1111000), 20);
-const_assert_eq!(powerlaw_bin_from_size(0b10010000), 21);
+assertc_eq!(powerlaw_bin_from_size(0b100), 0u32);
+assertc_eq!(powerlaw_bin_from_size(0b101), 1u32);
+assertc_eq!(powerlaw_bin_from_size(0b110), 2u32);
+assertc_eq!(powerlaw_bin_from_size(0b111), 3u32);
+assertc_eq!(powerlaw_bin_from_size(0b1000), 4u32);
+assertc_eq!(powerlaw_bin_from_size(0b1001), 5u32);
+assertc_eq!(powerlaw_bin_from_size(0b1010), 5u32);
+assertc_eq!(powerlaw_bin_from_size(0b100000), 12u32);
+assertc_eq!(powerlaw_bin_from_size(0b101000), 13u32);
+assertc_eq!(powerlaw_bin_from_size(0b110000), 14u32);
+assertc_eq!(powerlaw_bin_from_size(0b111000), 15u32);
+assertc_eq!(powerlaw_bin_from_size(0b1000000), 16u32);
+assertc_eq!(powerlaw_bin_from_size(0b1001000), 17u32);
+assertc_eq!(powerlaw_bin_from_size(0b1010000), 17u32);
+assertc_eq!(powerlaw_bin_from_size(0b1011000), 18u32);
+assertc_eq!(powerlaw_bin_from_size(0b1100000), 18u32);
+assertc_eq!(powerlaw_bin_from_size(0b1101000), 19u32);
+assertc_eq!(powerlaw_bin_from_size(0b1111000), 20u32);
+assertc_eq!(powerlaw_bin_from_size(0b10010000), 21u32);
 
 #[inline]
 const fn powerlaw_bins_round_up_size(size: NonZero<usize>) -> NonZero<usize> {
@@ -252,30 +252,39 @@ const fn const_non_zero_usize(x: usize) -> NonZero<usize> {
 	}
 }
 
-const_assert_eq!(powerlaw_bins_round_up_size(const_non_zero_usize(0b1000)).get(), 0b1000);
-const_assert_eq!(powerlaw_bins_round_up_size(const_non_zero_usize(0b1001)).get(), 0b1010);
-const_assert_eq!(powerlaw_bins_round_up_size(const_non_zero_usize(0b1010)).get(), 0b1010);
-const_assert_eq!(
+assertc_eq!(
+	powerlaw_bins_round_up_size(const_non_zero_usize(0b1000)).get(),
+	0b1000usize
+);
+assertc_eq!(
+	powerlaw_bins_round_up_size(const_non_zero_usize(0b1001)).get(),
+	0b1010usize
+);
+assertc_eq!(
+	powerlaw_bins_round_up_size(const_non_zero_usize(0b1010)).get(),
+	0b1010usize
+);
+assertc_eq!(
 	powerlaw_bins_round_up_size(const_non_zero_usize(0b10010)).get(),
-	0b10100
+	0b10100usize
 );
-const_assert_eq!(
+assertc_eq!(
 	powerlaw_bins_round_up_size(const_non_zero_usize(0b110100)).get(),
-	0b111000
+	0b111000usize
 );
-const_assert_eq!(
+assertc_eq!(
 	powerlaw_bins_round_up_size(const_non_zero_usize(0b1011000)).get(),
-	0b1100000
+	0b1100000usize
 );
-const_assert_eq!(
+assertc_eq!(
 	powerlaw_bins_round_up_size(const_non_zero_usize(usize::MAX / 2 + 1)).get(),
 	usize::MAX / 2 + 1
 );
-const_assert_eq!(
+assertc_eq!(
 	powerlaw_bins_round_up_size(const_non_zero_usize(usize::MAX / 2 + 2)).get(),
 	0b101usize << (usize::BITS - 3)
 );
-const_assert_eq!(powerlaw_bins_round_up_size(const_non_zero_usize(4080)).get(), 4096);
+assertc_eq!(powerlaw_bins_round_up_size(const_non_zero_usize(4080)).get(), 4096usize);
 
 impl Heap {
 	unsafe fn alloc(&mut self, size: NonZero<usize>, alignment: NonZero<usize>) -> *mut u8 {

@@ -1,9 +1,9 @@
 use core::ffi::{c_uint, c_void};
 use core::ptr::NonNull;
 
-use static_assertions::const_assert_eq;
+use const_format::assertc_eq;
 
-const_assert_eq!(linux_raw_sys::general::MADV_NORMAL, 0);
+assertc_eq!(linux_raw_sys::general::MADV_NORMAL, 0u32);
 bitflags::bitflags! {
 	pub struct MAdviseAdvice: c_uint {
 		const RANDOM = linux_raw_sys::general::MADV_RANDOM;

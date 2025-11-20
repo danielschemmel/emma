@@ -16,9 +16,9 @@ lto = true
 
 [dependencies]
 bitflags = "2.8.0"
+const_format = { version = "0.2.35", features = ["assertc"] }
 linux-raw-sys = { version = "0.10.0", default-features = false, features = ["general", "no_std"] }
 lock_api = "0.4.12"
-static_assertions = "1.1.0"
 syscalls = { version = "0.6.18", default-features = false }
 
 [dev-dependencies]

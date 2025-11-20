@@ -2,7 +2,7 @@ use core::mem::offset_of;
 use core::num::NonZero;
 use core::ptr::{self, NonNull};
 
-use static_assertions::const_assert;
+use const_format::assertc;
 #[cfg(feature = "tls")]
 use {
 	crate::emma::{AtomicHeapId, HeapId},
@@ -21,9 +21,17 @@ struct Arena {
 	page: Page,
 }
 
-const_assert!(ARENA_SIZE.is_power_of_two());
-const_assert!(MAXIMUM_OBJECT_ALIGNMENT.is_power_of_two());
-const_assert!(size_of::<Arena>() < ARENA_SIZE as usize);
+assertc!(
+	ARENA_SIZE.is_power_of_two(),
+	"The arena size ({}) should be a power of two.",
+	ARENA_SIZE
+);
+assertc!(
+	MAXIMUM_OBJECT_ALIGNMENT.is_power_of_two(),
+	"The maximum object size ({}) should be a power of two.",
+	MAXIMUM_OBJECT_ALIGNMENT
+);
+assertc!(size_of::<Arena>() < ARENA_SIZE as usize);
 
 impl Arena {
 	/// Makes a pointer to the arena from any pointer to a location inside the arena.
