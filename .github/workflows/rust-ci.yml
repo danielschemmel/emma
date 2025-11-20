@@ -5,6 +5,16 @@ on:
     - cron: '1 1 1 * *'
 
 jobs:
+  taplo:
+    name: Check toml file format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: taplo
+      - uses: actions/checkout@v4
+      - run: taplo fmt --check
+
   fmt:
     runs-on: ubuntu-latest
 
