@@ -12,7 +12,7 @@ extern crate alloc;
 use alloc::alloc::GlobalAlloc;
 
 use rand::prelude::Distribution;
-use rand::{Rng, SeedableRng};
+use rand::{RngExt, SeedableRng};
 use rand_distr::Exp;
 
 static EMMA: CheckedAllocator<DefaultEmma> = CheckedAllocator::new(DefaultEmma::new());
