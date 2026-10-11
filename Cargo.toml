@@ -15,17 +15,17 @@ codegen-units = 1
 lto = true
 
 [dependencies]
-bitflags = "2.8.0"
-const_format = { version = "0.2.35", features = ["assertc"] }
-linux-raw-sys = { version = "0.12.0", default-features = false, features = ["general", "no_std"] }
-lock_api = "0.4.12"
+bitflags = "2.13.2"
+const_format = { version = "0.2.36", features = ["assertc"] }
+linux-raw-sys = { version = "0.12.1", default-features = false, features = ["general", "no_std"] }
+lock_api = "0.4.14"
 syscalls = { version = "0.8.1", default-features = false }
 
 [dev-dependencies]
-rand = "0.10.0"
+rand = "0.10.3"
 rand_chacha = "0.10.0"
 rand_distr = "0.6.0"
-rangemap = "1.7.1"
+rangemap = "1.8.0"
 
 [features]
 default = []
